@@ -1,0 +1,209 @@
+
+(inline C "#include \"emscripten.h\"\n")
+
+(inline C "
+
+void free_JS_obj(void *ptr) {
+EM_ASM_(
+   objTable[$0] = null;
+, (int) ptr);
+// printf(\"freed Obj ref %d\\n\", (int)ptr);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int mallocStr(int len) {
+  return((int)malloc_string(len));
+}
+
+EMSCRIPTEN_KEEPALIVE
+int strBuffer(int strPtr) {
+  if (((Value *)strPtr)->type == StringBufferType) {
+    return((int)&((String *)strPtr)->buffer);
+  } else if (((Value *)strPtr)->type == SubStringType) {
+    return((int)((SubString *)strPtr)->buffer);
+  } else {
+    fprintf(stderr, \"*** Invalid String structure from Javascript\\n\");
+    abort();
+  }
+}
+
+EMSCRIPTEN_KEEPALIVE
+int strLength(int strPtr) {
+  if (((Value *)strPtr)->type != StringBufferType &&
+      ((Value *)strPtr)->type != SubStringType) {
+    fprintf(stderr, \"*** Invalid String structure from Javascript\\n\");
+    abort();
+  }
+  return((int)((String *)strPtr)->len);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int mallocOpaque() {
+  Value *opaque = opaqueValue(0, free_JS_obj);
+  return((int)opaque);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int opaqueData(int opaquePtr) {
+  if (((Value *)opaquePtr)->type != OpaqueType) {
+    fprintf(stderr, \"*** Invalid Opaque structure from Javascript\\n\");
+    abort();
+  }
+  return((int)&((Opaque *)opaquePtr)->ptr);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int mallocMaybe() {
+  return((int)malloc_maybe());
+}
+
+EMSCRIPTEN_KEEPALIVE
+int maybeData(int maybePtr) {
+  if (((Value *)maybePtr)->type != MaybeType) {
+    fprintf(stderr, \"*** Invalid Maybe structure from Javascript\\n\");
+    abort();
+  }
+  return((int)&((Maybe *)maybePtr)->value);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int mallocInt() {
+  return((int)malloc_integer());
+}
+
+EMSCRIPTEN_KEEPALIVE
+int intData(int intPtr) {
+  if (((Value *)intPtr)->type != IntegerType) {
+    fprintf(stderr, \"*** Invalid Integer structure from Javascript\\n\");
+    abort();
+  }
+  return((int)&((Integer *)intPtr)->numVal);
+}
+
+
+EMSCRIPTEN_KEEPALIVE
+int mallocVector() {
+  return((int)malloc_vector());
+}
+
+EMSCRIPTEN_KEEPALIVE
+int vectorConj(int vect, int value) {
+  Vector *v = mutateVectConj((Vector *)vect, (Value *)value);
+  return((int)v);
+}
+
+")
+
+(defn init []
+  (inline C "
+EM_ASM(
+  objTableSize = 1;
+  objTable = Array.apply(null, Array(objTableSize));
+
+  objRef = function(x) {
+    let i;
+    for (i = 1; i < objTableSize; i++) {
+      if (objTable[i] == null) {
+        objTable[i] = x;
+        break;
+      }
+    }
+    if (i == objTableSize) {
+      objTable = objTable.concat(Array.apply(null, Array(objTableSize)));
+      objTable[objTableSize] = x;
+      objTableSize = objTableSize * 2;
+    }
+    return i;
+  };
+
+  objDeref = function(n) {
+    if (n < objTableSize)
+      return objTable[n];
+    else
+      return null;
+  };
+
+  sendMaybe = function(x) {
+    let mv = _mallocMaybe();
+    let value = _maybeData(mv);
+    if (x == null)
+      setValue(value, 0, \"i64*\");
+    else
+      setValue(value, sendValue(x), \"i64*\");
+    return mv;
+  };
+
+  sendObject = function(x) {
+    let intValue = _mallocOpaque();
+    let intBuff = _opaqueData(intValue);
+    if (x == null)
+      setValue(intBuff, 0, \"i64*\");
+    else
+      setValue(intBuff, objRef(x), \"i64*\");
+    return intValue;
+  };
+
+  sendInteger = function(x) {
+    let intValue = _mallocInt();
+    let intBuff = _intData(intValue);
+    setValue(intBuff, x, \"i64\");
+    return intValue;
+  };
+
+  sendString = function(str) {
+    let encodedLen = lengthBytesUTF8(str);
+    let strValue = _mallocStr(encodedLen);
+    let strBuff = _strBuffer(strValue);
+    stringToUTF8(str, strBuff, encodedLen + 1);
+    return strValue;
+  };
+
+  sendArray = function(arr) {
+    let vect = _mallocVector();
+    arr.forEach(function(element) {
+      _vectorConj(vect, sendValue(element));
+    });
+    return vect;
+  };
+
+  sendValue = function(v) {
+    if (Number.isInteger(v))
+      return sendInteger(v);
+    else if (typeof v == 'string')
+      return sendString(v);
+    else if (Array.isArray(v))
+      return sendArray(v);
+    else
+      return sendObject(v);
+  };
+
+  rcvString = function(strValue) {
+    var mem = Module['wasmMemory'].buffer;
+    const stringBuffer = new Uint8Array(mem, _strBuffer(strValue), _strLength(strValue));
+    let str = \"\";
+    for (let i = 0; i < stringBuffer.length; i++) {
+      str += String.fromCharCode(stringBuffer[i]);
+    }
+    return str;
+  }
+);
+  return(nothing);"))
+
+(def _ (init))
+
+(defn make-object-ref [n]
+  (assert (instance? Integer n))
+  (inline C Opaque  "
+  dec_and_free(n_0, 1);
+  return(opaqueValue((void *)((Integer *)n_0)->numVal, free_JS_obj));
+"))
+
+(deftype ObjectRefValue [x]
+  (assert (instance? Opaque x))
+
+  Stringable
+  (string-list [_]
+    (list "<JSOBjectRef " (str x) ">")))
+
+(defn ObjectRef [n]
+  (ObjectRefValue (make-object-ref n)))

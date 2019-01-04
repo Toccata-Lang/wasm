@@ -1,0 +1,300 @@
+
+(add-ns wasm (module "wasm.toc"))
+
+(add-ns t (git-dependency "https://github.com/Toccata-Lang/html-css.git"
+                          "tag.toc"
+                          :sha "280e508"))
+(add-ns h (git-dependency "https://github.com/Toccata-Lang/html-css.git"
+                          "html.toc"
+                          :sha "280e508"))
+(add-ns s (git-dependency "https://github.com/Toccata-Lang/html-css.git"
+                          "svg.toc"
+                          :sha "280e508"))
+(add-ns d (git-dependency "https://github.com/Toccata-Lang/html-css.git"
+                          "document.toc"
+                          :sha "280e508"))
+
+(defprotocol DOM
+  (create-node [x]))
+
+(deftype DOMNode [x]
+  (assert (instance? Opaque x))
+
+  Stringable
+  (string-list [_]
+    (list "<DOMNode " (str x) ">")))
+
+(inline C "
+int extractDOMNode(Value *node) {
+  return((int)((Opaque *)((Vector *)((ReifiedVal *)node)->typeArgs)->tail[0])->ptr);
+}")
+
+(defn inner-html
+  ([node]
+   (assert (instance? DOMNode node))
+
+   (inline C String "
+   int x = EM_ASM_INT({
+     return sendString(objDeref($0).innerHTML);},
+   extractDOMNode(node_0));
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+  ([node s]
+   (assert (instance? DOMNode node))
+   (assert (instance? String s))
+
+   (inline C DOMNode "
+   EM_ASM_({
+     objDeref($0).innerHTML = rcvString($1);},
+   extractDOMNode(node_0), (int)s_1);
+   dec_and_free(s_1, 1);
+   return(node_0);\n")))
+
+(defn outer-html
+  ([node]
+   (assert (instance? DOMNode node))
+
+   (inline C String "
+   int x = EM_ASM_INT({
+     return sendString(objDeref($0).outerHTML);},
+   extractDOMNode(node_0));
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+  ([node s]
+   (assert (instance? DOMNode node))
+   (assert (instance? String s))
+
+   (inline C DOMNode "
+   EM_ASM_({
+     console.log(\"objref \" + $0);
+     objDeref($0).outerHTML = rcvString($1);},
+   extractDOMNode(node_0), (int)s_1);
+   dec_and_free(s_1, 1);
+   return(node_0);\n")))
+
+(defn client-x [node]
+  (assert (instance? DOMNode node))
+
+  (inline C String "
+   int x = EM_ASM_INT({
+     console.log(\"obj: \" + objDeref($0));
+     return sendValue(0);},
+   extractDOMNode(node_0));
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+
+(defn client-y [node]
+  (assert (instance? DOMNode node))
+
+  (inline C String "
+   int x = EM_ASM_INT({
+     return sendValue(objDeref($0).clientY);},
+   extractDOMNode(node_0));
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+
+(defn get-bounding-client-rect [node]
+  (assert (instance? DOMNode node))
+
+  (inline C String "
+   int x = EM_ASM_INT({let rect = objDeref($0).getBoundingClientRect();
+                       return sendValue([rect.top, rect.bottom,
+                                         Math.round(rect.left), Math.round(rect.right)]);},
+                      extractDOMNode(node_0));
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+
+(defn add-event-listener [node eventName handler]
+  (assert (instance? DOMNode node))
+  (assert (instance? String eventName))
+  (assert (instance? String handler))
+
+  (inline C String "
+   EM_ASM_({
+console.log(\"event listener: \" + eval(rcvString($2)));
+objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)));},
+           extractDOMNode(node_0), eventName_1, handler_2);
+   dec_and_free(node_0, 1);
+   dec_and_free(eventName_1, 1);
+   dec_and_free(handler_2, 1);
+   return(nothing);\n"))
+
+(defn get-input-value [node]
+  (assert (instance? DOMNode node))
+
+  (inline C String "
+  int x = EM_ASM_INT({
+               return sendValue(objDeref($0).value)},
+  extractDOMNode(node_0));
+  return((Value *)x);\n"))
+
+(defn get-attribute [node key]
+  (assert (instance? DOMNode node))
+  (assert (instance? String key))
+
+  (inline C String "
+  int x = EM_ASM_INT({
+               return sendValue(objDeref($0).getAttribute(rcvString($1)))},
+  extractDOMNode(node_0), (int)key_1);
+  dec_and_free(key_1, 1);
+  return((Value *)x);\n"))
+
+(defn set-attribute [node key value]
+  (assert (instance? DOMNode node))
+  (assert (instance? String key))
+  (assert (instance? String value))
+
+  (inline C DOMNode "
+  EM_ASM_({
+    objDeref($0).setAttribute(rcvString($1), rcvString($2))},
+  extractDOMNode(node_0), (int)key_1, (int)value_2);
+  dec_and_free(key_1, 1);
+  dec_and_free(value_2, 1);
+  return(node_0);\n"))
+
+(defn set-style-attribute [node key value]
+  (assert (instance? DOMNode node))
+  (assert (instance? String key))
+  (assert (instance? String value))
+
+  (inline C DOMNode "
+  EM_ASM_({
+    objDeref($0).style[rcvString($1)] = rcvString($2);},
+  extractDOMNode(node_0),(int)key_1, (int)value_2);
+  dec_and_free(key_1, 1);
+  dec_and_free(value_2, 1);
+  return(node_0);\n"))
+
+(defn append-child [node child]
+  (assert (instance? DOMNode node))
+  (assert (instance? DOMNode child))
+
+  (inline C Maybe "
+  EM_ASM_({
+    objDeref($0).appendChild(objDeref($1))},
+  extractDOMNode(node_0),
+  extractDOMNode(child_1));
+  dec_and_free(child_1, 1);
+  return(node_0);\n"))
+
+(defn node-element-by-id
+  ([s]
+   (assert (instance? String s))
+
+   (inline C Maybe "
+   int strValue = (int)s_0;
+   int x = EM_ASM_INT({
+             return sendMaybe(document.getElementById(rcvString($0)));},
+           strValue);
+   dec_and_free(s_0, 1);
+   return((Value *)x);\n"))
+  ([node s]
+   (assert (instance? DOMNode node))
+   (assert (instance? String s))
+
+   (inline C Maybe "
+   int x = EM_ASM_INT({
+             return sendMaybe($0.getElementById(rcvString($1)));},
+           extractDOMNode(node_0), (int)s_1);
+   dec_and_free(node_0, 1);
+   dec_and_free(s_1, 1);
+   return((Value *)x);\n")))
+
+(defn get-element-by-id
+  ([s]
+   (map (node-element-by-id s)
+        DOMNode))
+  ([node s]
+   (map (node-element-by-id node s)
+        DOMNode)))
+
+(defn node-get-elements-by-tag [s]
+  (inline C Vector "
+   int x = EM_ASM_INT({
+             let elements = document.getElementsByTagName(rcvString($0));
+             let vect = _mallocVector();
+             for (var i = 0; i < elements.length; i++) {
+               _vectorConj(vect, sendValue(elements[i]));
+             }
+             return vect;}, (int)s_0);
+   dec_and_free(s_0, 1);
+   return((Value *)x);\n"))
+
+(defn get-elements-by-tag-name [s]
+  (map (node-get-elements-by-tag s)
+       DOMNode))
+
+(defn text-node [s]
+  (assert (instance? String s))
+
+  (inline C Opaque "
+   int x = EM_ASM_INT({
+             return sendValue(document.createTextNode(rcvString($0)))},
+           (int)s_0);
+   dec_and_free(s_0, 1);
+   return((Value *)x);\n"))
+
+(defn createElement [tag]
+  (inline C Opaque "
+   int x = EM_ASM_INT({
+             return sendValue(document.createElement(rcvString($0)));},
+           (int)tag_0);
+   dec_and_free(tag_0, 1);
+   return((Value *)x);\n"))
+
+(defn createElementNS [ns tag]
+  (inline C Opaque "
+   int x = EM_ASM_INT({
+             return sendValue(document.createElementNS(rcvString($0), rcvString($1)));},
+           (int)ns_0, (int)tag_1);
+   dec_and_free(ns_0, 1);
+   dec_and_free(tag_1, 1);
+   return((Value *)x);\n"))
+
+(extend-type String
+  DOM
+  (create-node [s]
+    (DOMNode (text-node s))))
+
+(extend-type h/HTMLTag
+  DOM
+  (create-node [t]
+    (let [node (DOMNode (createElement (.name t)))]
+      ;; TODO: line counts are way off on this error message
+      ;; (map (seq (.attributes t) (fn [[k v]]
+      ;;                             (set-attribute node (str k) (str v)))))
+      (map (seq (.attributes t)) (fn [[k v]]
+                                   (set-attribute node (str k) (str v))))
+      (set-attribute node "style" (-> (.styling t)
+                                      (.styles)
+                                      (reduce [] (fn [v styling]
+                                                   (conj v (d/html styling))))
+                                      (interpose "; ")
+                                      d/html-str))
+      (set-attribute node "class" (-> (.class t)
+                                      (.classes)
+                                      keys
+                                      (interpose " ")
+                                      d/html-str))
+      (inner-html node (d/html-str (.contents t)))
+      node)))
+
+(extend-type s/SVGTag
+  DOM
+  (create-node [t]
+    (let [node (DOMNode (createElementNS (.namespace t) (.name t)))]
+      (map (seq (.attributes t)) (fn [[k v]]
+                                   (set-attribute node (str k) (str v))))
+      (set-attribute node "style" (-> (.styling t)
+                                      (.styles)
+                                      (reduce [] (fn [v styling]
+                                                   (conj v (d/html styling))))
+                                      (interpose "; ")
+                                      d/html-str))
+      (set-attribute node "class" (-> (.class t)
+                                      (.classes)
+                                      keys
+                                      (interpose " ")
+                                      d/html-str))
+      (inner-html node (d/html-str (.contents t)))
+      node)))
