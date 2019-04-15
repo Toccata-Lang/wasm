@@ -1,8 +1,12 @@
 
-(inline C "#include \"emscripten.h\"\n")
+(inline C "
+#ifdef TOCCATA_WASM
+#include \"emscripten.h\"
+#endif\n")
 
 (inline C "
 
+#ifdef TOCCATA_WASM
 void free_JS_obj(void *ptr) {
 EM_ASM_(
    objTable[$0] = null;
@@ -91,11 +95,12 @@ int vectorConj(int vect, int value) {
   Vector *v = mutateVectConj((Vector *)vect, (Value *)value);
   return((int)v);
 }
-
+#endif
 ")
 
 (defn init []
   (inline C "
+#ifdef TOCCATA_WASM
 EM_ASM(
   objTableSize = 1;
   objTable = Array.apply(null, Array(objTableSize));
@@ -187,15 +192,21 @@ EM_ASM(
     return str;
   }
 );
-  return(nothing);"))
+#endif
+  return(integerValue(1));
+"))
 
 (def _ (init))
 
 (defn make-object-ref [n]
   (assert (instance? Integer n))
   (inline C Opaque  "
+#ifdef TOCCATA_WASM
   dec_and_free(n_0, 1);
   return(opaqueValue((void *)((Integer *)n_0)->numVal, free_JS_obj));
+#else
+  return(opaqueValue((void *)0, (void *)0));
+#endif
 "))
 
 (deftype ObjectRefValue [x]
@@ -207,3 +218,19 @@ EM_ASM(
 
 (defn ObjectRef [n]
   (ObjectRefValue (make-object-ref n)))
+
+;; (defn alert* [s]
+;;   (assert (instance? String s))
+;;   (inline C String "
+;;    EM_ASM_({
+;;      alert(rcvString($0));},
+;;    (int)s_0);
+;;    dec_and_free(s_0, 1);
+;;    return(nothing);\n"))
+
+;; (defn alert [& xs]
+;;   (-> xs
+;;       (map str)
+;;       (interpose " ")
+;;       to-str
+;;       alert*))
