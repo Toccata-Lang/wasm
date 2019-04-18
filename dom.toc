@@ -128,12 +128,15 @@ Value *x = stringValue(\"\");
    dec_and_free(node_0, 1);
    return((Value *)x);\n"))
 
-(defn add-event-listener [node eventName handler]
-  (assert (instance? DOMNode node))
-  (assert (instance? String eventName))
-  (assert (instance? String handler))
+(defn add-event-listener
+  ([node eventName handler] (add-event-listener node eventName handler nothing))
+  ([node eventName handler capture]
+   (assert (instance? DOMNode node))
+   (assert (instance? String eventName))
+   (assert (instance? String handler))
 
-  (inline C Maybe "
+   (inline C Maybe "
+   if (isNothing(capture_3, \"\", 0)) {
 #ifdef TOCCATA_WASM
    EM_ASM_({
 console.log(\"event listener: \" + eval(rcvString($2)));
@@ -143,7 +146,18 @@ objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)));},
    dec_and_free(node_0, 1);
    dec_and_free(eventName_1, 1);
    dec_and_free(handler_2, 1);
-   return(nothing);\n"))
+} else {
+#ifdef TOCCATA_WASM
+   EM_ASM_({
+console.log(\"event listener: \" + eval(rcvString($2)));
+objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
+           extractDOMNode(node_0), eventName_1, handler_2);
+#endif
+   dec_and_free(node_0, 1);
+   dec_and_free(eventName_1, 1);
+   dec_and_free(handler_2, 1);
+}
+   return(nothing);\n")))
 
 (defn get-input-value [node]
   (assert (instance? DOMNode node))
@@ -158,6 +172,21 @@ Value *x = stringValue(\"\");
 #endif
   return((Value *)x);\n"))
 
+(defn get-property [node key]
+  (assert (instance? DOMNode node))
+  (assert (instance? String key))
+
+  (inline C String "
+#ifdef TOCCATA_WASM
+  int x = EM_ASM_INT({
+               return sendValue(objDeref($0)[rcvString($1)])},
+  extractDOMNode(node_0), (int)key_1);
+  dec_and_free(key_1, 1);
+#else
+Value *x = stringValue(\"\");
+#endif
+  return((Value *)x);\n"))
+
 (defn get-attribute [node key]
   (assert (instance? DOMNode node))
   (assert (instance? String key))
@@ -165,11 +194,28 @@ Value *x = stringValue(\"\");
   (inline C String "
 #ifdef TOCCATA_WASM
   int x = EM_ASM_INT({
+               console.log('obj ', rcvString($1));
+               console.log('scrollHeight ', objDeref($0)[\"scrollHeight\"]);
+               console.log('prop ', objDeref($0)[rcvString($1)]);
+               console.log('attr ', objDeref($0).getAttribute(rcvString($1)));
                return sendValue(objDeref($0).getAttribute(rcvString($1)))},
   extractDOMNode(node_0), (int)key_1);
   dec_and_free(key_1, 1);
 #else
 Value *x = stringValue(\"\");
+#endif
+  return((Value *)x);\n"))
+
+(defn get-checked [node]
+  (assert (instance? DOMNode node))
+
+  (inline C Maybe "
+#ifdef TOCCATA_WASM
+  int x = EM_ASM_INT({
+               return sendMaybe(objDeref($0).checked)},
+  extractDOMNode(node_0));
+#else
+Value *x = nothing;
 #endif
   return((Value *)x);\n"))
 
@@ -270,6 +316,38 @@ Value *x = stringValue(\"\");
    (map (node-element-by-id node s)
         DOMNode)))
 
+(defn remove [node]
+  (assert (instance? DOMNode node))
+
+  (inline C DOMNode "
+#ifdef TOCCATA_WASM
+   EM_ASM_({
+     var node = objDeref($0); 
+     node.parentNode.removeChild(node);},
+   extractDOMNode(node_0));
+#endif
+   return(node_0);\n"))
+
+(defn node-get-elements-by-class [s]
+  (inline C Vector "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+             let elements = document.getElementsByClassName(rcvString($0));
+             let vect = _mallocVector();
+             for (var i = 0; i < elements.length; i++) {
+               _vectorConj(vect, sendValue(elements[i]));
+             }
+             return vect;}, (int)s_0);
+#else
+   Vector *x = empty_vect;
+#endif
+   dec_and_free(s_0, 1);
+   return((Value *)x);\n"))
+
+(defn get-elements-by-class-name [s]
+  (map (node-get-elements-by-class s)
+       DOMNode))
+
 (defn node-get-elements-by-tag [s]
   (inline C Vector "
 #ifdef TOCCATA_WASM
@@ -328,6 +406,22 @@ Value *x = stringValue(\"\");
    dec_and_free(tag_0, 1);
    return((Value *)x);\n"))
 
+(defn get-value [node]
+  (assert (instance? DOMNode node))
+
+  (inline C String "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     var e = objDeref($0);
+     return(sendValue(e.value));},
+   extractDOMNode(node_0));
+#else
+Value *x = stringValue(\"\");
+#endif
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n")
+ )
+
 (extend-type String
   DOM
   (create-node [s]
@@ -340,8 +434,6 @@ Value *x = stringValue(\"\");
       ;; TODO: line counts are way off on this error message
       ;; (map (seq (.attributes t) (fn [[k v]]
       ;;                             (set-attribute node (str k) (str v)))))
-      (map (seq (.attributes t)) (fn [[k v]]
-                                   (set-attribute node (str k) (str v))))
       (set-attribute node "style" (-> (.styling t)
                                       (.styles)
                                       (reduce [] (fn [v styling]
@@ -353,6 +445,8 @@ Value *x = stringValue(\"\");
                                       keys
                                       (interpose " ")
                                       d/html-str))
+      (map (seq (.attributes t)) (fn [[k v]]
+                                   (set-attribute node (str k) (str v))))
       (inner-html node (d/html-str (.contents t)))
       node)))
 

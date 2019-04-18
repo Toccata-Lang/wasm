@@ -131,7 +131,7 @@ EM_ASM(
   sendMaybe = function(x) {
     let mv = _mallocMaybe();
     let value = _maybeData(mv);
-    if (x == null)
+    if (x == null || x === false)
       setValue(value, 0, \"i64*\");
     else
       setValue(value, sendValue(x), \"i64*\");
