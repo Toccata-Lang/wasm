@@ -3,16 +3,16 @@
 
 (add-ns t (git-dependency "https://github.com/Toccata-Lang/html-css.git"
                           "tag.toc"
-                          :sha "41dd029"))
+                          :sha "a317ea7"))
 (add-ns h (git-dependency "https://github.com/Toccata-Lang/html-css.git"
                           "html.toc"
-                          :sha "41dd029"))
+                          :sha "a317ea7"))
 (add-ns s (git-dependency "https://github.com/Toccata-Lang/html-css.git"
                           "svg.toc"
-                          :sha "41dd029"))
+                          :sha "a317ea7"))
 (add-ns d (git-dependency "https://github.com/Toccata-Lang/html-css.git"
                           "document.toc"
-                          :sha "41dd029"))
+                          :sha "a317ea7"))
 
 
 (defprotocol DOM
