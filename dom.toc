@@ -23,7 +23,7 @@
 
   Stringable
   (string-list [_]
-    (list "<DOMNode " (str x) ">")))
+    (list "<DOMNode>")))
 
 (inline C "
 int extractDOMNode(Value *node) {
@@ -191,14 +191,10 @@ Value *x = stringValue(\"\");
   (assert (instance? DOMNode node))
   (assert (instance? String key))
 
-  (inline C String "
+  (inline C "
 #ifdef TOCCATA_WASM
   int x = EM_ASM_INT({
-               console.log('obj ', rcvString($1));
-               console.log('scrollHeight ', objDeref($0)[\"scrollHeight\"]);
-               console.log('prop ', objDeref($0)[rcvString($1)]);
-               console.log('attr ', objDeref($0).getAttribute(rcvString($1)));
-               return sendValue(objDeref($0).getAttribute(rcvString($1)))},
+               return sendValue(objDeref($0)[rcvString($1)])},
   extractDOMNode(node_0), (int)key_1);
   dec_and_free(key_1, 1);
 #else

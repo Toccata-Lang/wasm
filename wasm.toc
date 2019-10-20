@@ -128,16 +128,6 @@ EM_ASM(
       return null;
   };
 
-  sendMaybe = function(x) {
-    let mv = _mallocMaybe();
-    let value = _maybeData(mv);
-    if (x == null || x === false)
-      setValue(value, 0, \"i64*\");
-    else
-      setValue(value, sendValue(x), \"i64*\");
-    return mv;
-  };
-
   sendObject = function(x) {
     let intValue = _mallocOpaque();
     let intBuff = _opaqueData(intValue);
@@ -171,9 +161,23 @@ EM_ASM(
     return vect;
   };
 
+  sendMaybe = function(x) {
+    let mv = _mallocMaybe();
+    let value = _maybeData(mv);
+    if (x == null || x === false)
+      setValue(value, 0, \"i64*\");
+    else if (x === true)
+      setValue(value, sendObject(x), \"i64*\");
+    else
+      setValue(value, sendValue(x), \"i64*\");
+    return mv;
+  };
+
   sendValue = function(v) {
     if (Number.isInteger(v))
       return sendInteger(v);
+    else if (typeof v === 'boolean')
+      return sendMaybe(v);
     else if (typeof v == 'string')
       return sendString(v);
     else if (Array.isArray(v))
@@ -202,9 +206,11 @@ EM_ASM(
   (assert (instance? Integer n))
   (inline C Opaque  "
 #ifdef TOCCATA_WASM
+  Value *ref = opaqueValue((void *)((Integer *)n_0)->numVal, free_JS_obj);
   dec_and_free(n_0, 1);
-  return(opaqueValue((void *)((Integer *)n_0)->numVal, free_JS_obj));
+  return(ref);
 #else
+  dec_and_free(n_0, 1);
   return(opaqueValue((void *)0, (void *)0));
 #endif
 "))
@@ -218,6 +224,21 @@ EM_ASM(
 
 (defn ObjectRef [n]
   (ObjectRefValue (make-object-ref n)))
+
+(defn JS-eval [s]
+  (assert (instance? String s))
+  (inline C Opaque  "
+#ifdef TOCCATA_WASM
+  EM_ASM_({
+    eval(rcvString($0));
+    }, (int)s_0);
+  dec_and_free(s_0, 1);
+  return(nothing);
+#else
+  dec_and_free(s_0, 1);
+  return(nothing);
+#endif
+"))
 
 ;; (defn alert* [s]
 ;;   (assert (instance? String s))
