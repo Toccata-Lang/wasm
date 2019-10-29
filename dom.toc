@@ -1,18 +1,15 @@
 
 (add-ns wasm (module "wasm.toc"))
 
-(add-ns t (git-dependency "https://github.com/Toccata-Lang/html-css.git"
-                          "tag.toc"
-                          :sha "a317ea7"))
 (add-ns h (git-dependency "https://github.com/Toccata-Lang/html-css.git"
                           "html.toc"
-                          :sha "a317ea7"))
+                          :sha "1b879fa"))
 (add-ns s (git-dependency "https://github.com/Toccata-Lang/html-css.git"
                           "svg.toc"
-                          :sha "a317ea7"))
+                          :sha "1b879fa"))
 (add-ns d (git-dependency "https://github.com/Toccata-Lang/html-css.git"
                           "document.toc"
-                          :sha "a317ea7"))
+                          :sha "1b879fa"))
 
 
 (defprotocol DOM
@@ -465,3 +462,41 @@ Value *x = stringValue(\"\");
                                       d/html-str))
       (inner-html node (d/html-str (.contents t)))
       node)))
+
+(defn ptr [x]
+  (inline C Integer "
+   Value *result = integerValue((int)x_0);
+   incRef(result, 1);
+   dec_and_free(x_0, 1);
+   return(result);
+"))
+
+(defn deref [x]
+  (inline C  "
+   Value *y = (Value *)((Integer *)x_0)->numVal;
+   incRef(y, 1);
+   dec_and_free(x_0, 1);
+   return(y);
+"))
+
+(defn callToccata [f]
+  (apply (deref f) empty-list))
+
+(JS-callable callToccata 1)
+
+(defn handle-event [node key handler]
+  (assert (instance? DOMNode node))
+  (assert (instance? String key))
+
+  (inline C DOMNode "
+#ifdef TOCCATA_WASM
+  EM_ASM_({
+    objDeref($0).addEventListener(rcvString($1),
+                 function(){
+                  callToccata($2);
+                 });
+          },
+  extractDOMNode(node_0), (int)key_1, (int)handler_2);
+#endif
+  dec_and_free(key_1, 1);
+  return(node_0);\n"))
