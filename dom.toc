@@ -10,10 +10,13 @@
 (add-ns d (git-dependency "https://github.com/Toccata-Lang/html-css.git"
                           "document.toc"
                           :sha "1b879fa"))
-
+(add-ns cont (git-dependency "https://github.com/Toccata-Lang/continuation"
+                             "continuation.toc"
+                             :sha "30b61ff"))
 
 (defprotocol DOM
-  (create-node [x]))
+  (create-node [x]
+    (create-node (str x))))
 
 (deftype DOMNode [x]
   (assert (instance? Opaque x))
@@ -22,10 +25,15 @@
   (string-list [_]
     (list "<DOMNode>")))
 
-(inline C "
-int extractDOMNode(Value *node) {
-  return((int)((Opaque *)((ReifiedVal *)node)->impls[0])->ptr);
-}")
+(deftype XMLHttpRequest [x]
+  (assert (instance? Opaque x))
+
+  Stringable
+  (string-list [_]
+    (list "<XMLHttpRequest>")))
+
+(def DOMObject (comp DOMNode
+                     XMLHttpRequest))
 
 (defn inner-html
   ([node]
@@ -35,7 +43,7 @@ int extractDOMNode(Value *node) {
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
      return sendString(objDeref($0).innerHTML);},
-   extractDOMNode(node_0));
+   extractObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -49,7 +57,7 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
    EM_ASM_({
      objDeref($0).innerHTML = rcvString($1);},
-   extractDOMNode(node_0), (int)s_1);
+   extractObject(node_0), (int)s_1);
 #endif
    dec_and_free(s_1, 1);
    return(node_0);\n")))
@@ -62,7 +70,7 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
      return sendString(objDeref($0).outerHTML);},
-   extractDOMNode(node_0));
+   extractObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -76,7 +84,7 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
    EM_ASM_({
      objDeref($0).outerHTML = rcvString($1);},
-   extractDOMNode(node_0), (int)s_1);
+   extractObject(node_0), (int)s_1);
 #endif
    dec_and_free(s_1, 1);
    return(node_0);\n")))
@@ -89,7 +97,7 @@ Value *x = stringValue(\"\");
    int x = EM_ASM_INT({
      console.log(\"obj: \" + objDeref($0));
      return sendValue(0);},
-   extractDOMNode(node_0));
+   extractObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -103,7 +111,7 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
      return sendValue(objDeref($0).clientY);},
-   extractDOMNode(node_0));
+   extractObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -118,7 +126,7 @@ Value *x = stringValue(\"\");
    int x = EM_ASM_INT({let rect = objDeref($0).getBoundingClientRect();
                        return sendValue([rect.top, rect.bottom,
                                          Math.round(rect.left), Math.round(rect.right)]);},
-                      extractDOMNode(node_0));
+                      extractObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -138,7 +146,7 @@ Value *x = stringValue(\"\");
    EM_ASM_({
 console.log(\"event listener: \" + eval(rcvString($2)));
 objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)));},
-           extractDOMNode(node_0), eventName_1, handler_2);
+           extractObject(node_0), eventName_1, handler_2);
 #endif
    dec_and_free(node_0, 1);
    dec_and_free(eventName_1, 1);
@@ -148,7 +156,7 @@ objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)));},
    EM_ASM_({
 console.log(\"event listener: \" + eval(rcvString($2)));
 objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
-           extractDOMNode(node_0), eventName_1, handler_2);
+           extractObject(node_0), eventName_1, handler_2);
 #endif
    dec_and_free(node_0, 1);
    dec_and_free(eventName_1, 1);
@@ -163,21 +171,21 @@ objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
 #ifdef TOCCATA_WASM
   int x = EM_ASM_INT({
                return sendValue(objDeref($0).value)},
-  extractDOMNode(node_0));
+  extractObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
   return((Value *)x);\n"))
 
 (defn get-property [node key]
-  (assert (instance? DOMNode node))
+  (assert (instance? DOMObject node))
   (assert (instance? String key))
 
   (inline C String "
 #ifdef TOCCATA_WASM
   int x = EM_ASM_INT({
                return sendValue(objDeref($0)[rcvString($1)])},
-  extractDOMNode(node_0), (int)key_1);
+  extractObject(node_0), (int)key_1);
   dec_and_free(key_1, 1);
 #else
 Value *x = stringValue(\"\");
@@ -185,14 +193,14 @@ Value *x = stringValue(\"\");
   return((Value *)x);\n"))
 
 (defn get-attribute [node key]
-  (assert (instance? DOMNode node))
+  (assert (instance? DOMObject node))
   (assert (instance? String key))
 
   (inline C "
 #ifdef TOCCATA_WASM
   int x = EM_ASM_INT({
                return sendValue(objDeref($0)[rcvString($1)])},
-  extractDOMNode(node_0), (int)key_1);
+  extractObject(node_0), (int)key_1);
   dec_and_free(key_1, 1);
 #else
 Value *x = stringValue(\"\");
@@ -206,14 +214,14 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
   int x = EM_ASM_INT({
                return sendMaybe(objDeref($0).checked)},
-  extractDOMNode(node_0));
+  extractObject(node_0));
 #else
 Value *x = nothing;
 #endif
   return((Value *)x);\n"))
 
 (defn set-attribute [node key value]
-  (assert (instance? DOMNode node))
+  (assert (instance? DOMObject node))
   (assert (instance? String key))
   (assert (instance? String value))
 
@@ -221,7 +229,7 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
   EM_ASM_({
     objDeref($0).setAttribute(rcvString($1), rcvString($2))},
-  extractDOMNode(node_0), (int)key_1, (int)value_2);
+  extractObject(node_0), (int)key_1, (int)value_2);
 #endif
   dec_and_free(key_1, 1);
   dec_and_free(value_2, 1);
@@ -236,7 +244,7 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
   EM_ASM_({
     objDeref($0).style[rcvString($1)] = rcvString($2);},
-  extractDOMNode(node_0),(int)key_1, (int)value_2);
+  extractObject(node_0),(int)key_1, (int)value_2);
 #endif
   dec_and_free(key_1, 1);
   dec_and_free(value_2, 1);
@@ -249,7 +257,7 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
              return sendArray(objDeref($0).childNodes);},
-           extractDOMNode(node_0));
+           extractObject(node_0));
 #else
    Value *x = nothing;
 #endif
@@ -264,11 +272,42 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
   EM_ASM_({
     objDeref($0).appendChild(objDeref($1))},
-  extractDOMNode(node_0),
-  extractDOMNode(child_1));
+  extractObject(node_0),
+  extractObject(child_1));
 #endif
   dec_and_free(child_1, 1);
   return(node_0);\n"))
+
+(defn insert-before
+  ([node child]
+   (assert (instance? DOMNode node))
+   (assert (instance? DOMNode child))
+
+   (inline C DOMNode "
+#ifdef TOCCATA_WASM
+  EM_ASM_({
+    objDeref($0).insertBefore(objDeref($1), null)},
+  extractObject(node_0),
+  extractObject(child_1));
+#endif
+  dec_and_free(child_1, 1);
+  return(node_0);\n"))
+  ([node child ref-node]
+   (assert (instance? DOMNode node))
+   (assert (instance? DOMNode child))
+   (assert (instance? DOMNode ref-node))
+
+   (inline C DOMNode "
+#ifdef TOCCATA_WASM
+  EM_ASM_({
+    objDeref($0).insertBefore(objDeref($1), objDeref($2))},
+  extractObject(node_0),
+  extractObject(child_1),
+  extractObject(ref_node_2));
+#endif
+  dec_and_free(child_1, 1);
+  dec_and_free(ref_node_2, 1);
+  return(node_0);\n")))
 
 (defn node-element-by-id
   ([s]
@@ -293,7 +332,7 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
              return sendMaybe($0.getElementById(rcvString($1)));},
-           extractDOMNode(node_0), (int)s_1);
+           extractObject(node_0), (int)s_1);
 #else
    Value *x = nothing;
 #endif
@@ -317,7 +356,7 @@ Value *x = nothing;
    EM_ASM_({
      var node = objDeref($0); 
      node.parentNode.removeChild(node);},
-   extractDOMNode(node_0));
+   extractObject(node_0));
 #endif
    return(node_0);\n"))
 
@@ -407,7 +446,7 @@ Value *x = nothing;
    int x = EM_ASM_INT({
      var e = objDeref($0);
      return(sendValue(e.value));},
-   extractDOMNode(node_0));
+   extractObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -463,40 +502,74 @@ Value *x = stringValue(\"\");
       (inner-html node (d/html-str (.contents t)))
       node)))
 
-(defn ptr [x]
-  (inline C Integer "
-   Value *result = integerValue((int)x_0);
-   incRef(result, 1);
-   dec_and_free(x_0, 1);
-   return(result);
-"))
-
-(defn deref [x]
-  (inline C  "
-   Value *y = (Value *)((Integer *)x_0)->numVal;
-   incRef(y, 1);
-   dec_and_free(x_0, 1);
-   return(y);
-"))
-
-(defn callToccata [f]
-  (apply (deref f) empty-list))
-
-(JS-callable callToccata 1)
-
-(defn handle-event [node key handler]
-  (assert (instance? DOMNode node))
-  (assert (instance? String key))
-
-  (inline C DOMNode "
+(defn new-http-request* []
+  (inline C Opaque "
 #ifdef TOCCATA_WASM
-  EM_ASM_({
-    objDeref($0).addEventListener(rcvString($1),
-                 function(){
-                  callToccata($2);
-                 });
-          },
-  extractDOMNode(node_0), (int)key_1, (int)handler_2);
+   int x = EM_ASM_INT({
+     return sendObject(new XMLHttpRequest());});
+#else
+  Value *x = opaqueValue((void *)0, (Destructor *)0);
 #endif
-  dec_and_free(key_1, 1);
-  return(node_0);\n"))
+   return((Value *)x);\n"))
+
+(defn new-http-request []
+  (XMLHttpRequest (new-http-request*)))
+
+(defn send-http-request
+  ([rqst method url]
+   (assert (instance? XMLHttpRequest rqst))
+   (assert (instance? String method))
+   (assert (instance? String url))
+
+   (inline C XMLHttpRequest "
+#ifdef TOCCATA_WASM
+   EM_ASM_({
+     let rqst = objDeref($0); 
+     rqst.open(rcvString($1), rcvString($2));
+     rqst.send();},
+   extractObject(rqst_0),
+   (int)method_1,
+   (int)url_2
+);
+#endif
+   dec_and_free(method_1, 1);
+   dec_and_free(url_2, 1);
+   return(rqst_0);\n"))
+
+  ([rqst method url data]
+   (assert (instance? XMLHttpRequest rqst))
+   (assert (instance? String method))
+   (assert (instance? String url))
+   (assert (instance? String data))
+
+   (inline C XMLHttpRequest "
+#ifdef TOCCATA_WASM
+   EM_ASM_({
+     let rqst = objDeref($0); 
+     rqst.open(rcvString($1), rcvString($2));
+     rqst.send(rcvString($3));},
+   extractObject(rqst_0),
+   (int)method_1,
+   (int)url_2,
+   (int)data_3);
+#endif
+   dec_and_free(method_1, 1);
+   dec_and_free(url_2, 1);
+   dec_and_free(data_3, 1);
+   return(rqst_0);\n")))
+
+(defn http-request
+  ([method url]
+   (cont/Continuation (fn [c]
+                        (let [r (new-http-request)]
+                          (w/handle-event r "readystatechange"
+                                          (fn []
+                                            (c r)))
+                          (send-http-request r method url)))))
+  ([method url data]
+   (cont/Continuation (fn [c]
+                        (let [r (new-http-request)]
+                          (w/handle-event r "readystatechange"
+                                          (fn []
+                                            (c r)))
+                          (send-http-request r method url data))))))

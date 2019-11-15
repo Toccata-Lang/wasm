@@ -1,4 +1,8 @@
 
+(add-ns cont (git-dependency "https://github.com/Toccata-Lang/continuation"
+                             "continuation.toc"
+                             :sha "30b61ff"))
+
 (inline C "
 #ifdef TOCCATA_WASM
 #include \"emscripten.h\"
@@ -6,11 +10,24 @@
 
 (inline C "
 
+int extractObject(Value *objRef) {
+  return((int)((Opaque *)((ReifiedVal *)objRef)->impls[0])->ptr);
+}
+
 #ifdef TOCCATA_WASM
+
+EMSCRIPTEN_KEEPALIVE
+void decRef(int arg) {
+  Value *v = (Value *)arg;
+  if (v->refs > 0) {
+    dec_and_free(v, 1);
+  }
+};
+
 void free_JS_obj(void *ptr) {
-EM_ASM_(
+EM_ASM_({
    objTable[$0] = null;
-, (int) ptr);
+}, (int) ptr);
 // printf(\"freed Obj ref %d\\n\", (int)ptr);
 }
 
@@ -153,6 +170,14 @@ EM_ASM(
     return strValue;
   };
 
+  sendRawArray = function(arr) {
+    let vect = _mallocVector();
+    arr.forEach(function(element) {
+      _vectorConj(vect, element);
+    });
+    return vect;
+  };
+
   sendArray = function(arr) {
     let vect = _mallocVector();
     arr.forEach(function(element) {
@@ -178,7 +203,7 @@ EM_ASM(
       return sendInteger(v);
     else if (typeof v === 'boolean')
       return sendMaybe(v);
-    else if (typeof v == 'string')
+    else if (typeof v === 'string')
       return sendString(v);
     else if (Array.isArray(v))
       return sendArray(v);
@@ -202,29 +227,6 @@ EM_ASM(
 
 (def _ (init))
 
-(defn make-object-ref [n]
-  (assert (instance? Integer n))
-  (inline C Opaque  "
-#ifdef TOCCATA_WASM
-  Value *ref = opaqueValue((void *)((Integer *)n_0)->numVal, free_JS_obj);
-  dec_and_free(n_0, 1);
-  return(ref);
-#else
-  dec_and_free(n_0, 1);
-  return(opaqueValue((void *)0, (void *)0));
-#endif
-"))
-
-(deftype ObjectRefValue [x]
-  (assert (instance? Opaque x))
-
-  Stringable
-  (string-list [_]
-    (list "<JSOBjectRef " (str x) ">")))
-
-(defn ObjectRef [n]
-  (ObjectRefValue (make-object-ref n)))
-
 (defn JS-eval [s]
   (assert (instance? String s))
   (inline C Opaque  "
@@ -239,6 +241,67 @@ EM_ASM(
   return(nothing);
 #endif
 "))
+
+(defn ptr [x]
+  (inline C Integer "
+   Value *result = integerValue((int)x_0);
+   incRef(result, 1);
+   dec_and_free(x_0, 1);
+   return(result);
+"))
+
+(defn deref [x]
+  (inline C  "
+   Value *y = (Value *)((Integer *)x_0)->numVal;
+   incRef(y, 1);
+   dec_and_free(x_0, 1);
+   return(y);
+"))
+
+(defn callToccata [f args]
+  (apply (deref f) (deref args)))
+
+(JS-callable callToccata 2)
+
+(defn set-timeout* [delay f]
+  (assert (instance? Integer delay))
+
+  (inline C Maybe "
+#ifdef TOCCATA_WASM
+  EM_ASM_({
+      setTimeout(function(){
+          _decRef(callToccata($1, sendRawArray([])))},
+      $0);
+          },
+   (int)((Integer *)delay_0)->numVal, (int)f_1);
+#endif
+  dec_and_free(delay_0, 1);
+  return(nothing);\n"))
+
+(defn async [f]
+  (f identity))
+
+(defn wait [delay]
+  (cont/Continuation (fn [c]
+                  (set-timeout* delay (fn []
+                                        (c nothing))))))
+
+(defn handle-event [node key handler]
+  (assert (instance? DOMObject node))
+  (assert (instance? String key))
+
+  (inline C DOMNode "
+#ifdef TOCCATA_WASM
+  EM_ASM_({
+    objDeref($0).addEventListener(rcvString($1),
+                 function(){
+                  _decRef(callToccata($2, sendArray([])));
+                 });
+          },
+  extractObject(node_0), (int)key_1, (int)handler_2);
+#endif
+  dec_and_free(key_1, 1);
+  return(node_0);\n"))
 
 ;; (defn alert* [s]
 ;;   (assert (instance? String s))
