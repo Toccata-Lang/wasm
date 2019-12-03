@@ -144,23 +144,23 @@ Value *x = stringValue(\"\");
    if (isNothing(capture_3, \"\", 0)) {
 #ifdef TOCCATA_WASM
    EM_ASM_({
-console.log(\"event listener: \" + eval(rcvString($2)));
 objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)));},
            extractObject(node_0), eventName_1, handler_2);
 #endif
    dec_and_free(node_0, 1);
    dec_and_free(eventName_1, 1);
    dec_and_free(handler_2, 1);
+   dec_and_free(capture_3, 1);
 } else {
 #ifdef TOCCATA_WASM
    EM_ASM_({
-console.log(\"event listener: \" + eval(rcvString($2)));
 objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
            extractObject(node_0), eventName_1, handler_2);
 #endif
    dec_and_free(node_0, 1);
    dec_and_free(eventName_1, 1);
    dec_and_free(handler_2, 1);
+   dec_and_free(capture_3, 1);
 }
    return(nothing);\n")))
 
@@ -181,7 +181,7 @@ Value *x = stringValue(\"\");
   (assert (instance? DOMObject node))
   (assert (instance? String key))
 
-  (inline C String "
+  (inline C "
 #ifdef TOCCATA_WASM
   int x = EM_ASM_INT({
                return sendValue(objDeref($0)[rcvString($1)])},
@@ -558,18 +558,41 @@ Value *x = stringValue(\"\");
    dec_and_free(data_3, 1);
    return(rqst_0);\n")))
 
+(defn http-request-handler [r f]
+  (inline C wasm/DOMNode "
+#ifdef TOCCATA_WASM
+  EM_ASM_({
+    let rqst = objDeref($0);
+    rqst.addEventListener(\"readystatechange\",
+                 function(){
+                  _decRef(callToccata($1, sendArray([])));
+                  if (rqst.readyState == 4) {
+                    _decRef($1);
+                  }
+                 });
+          },
+  extractObject(r_0), (int)f_1);
+#endif
+  return(r_0);\n"))
+
 (defn http-request
   ([method url]
-   (cont/Continuation (fn [c]
-                        (let [r (new-http-request)]
-                          (w/handle-event r "readystatechange"
-                                          (fn []
-                                            (c r)))
-                          (send-http-request r method url)))))
+   (for [rqst (cont/Continuation (fn [c]
+                                   (let [r (new-http-request)]
+                                     (http-request-handler r (fn []
+                                                               (c r)))
+                                     (send-http-request r method url))))
+         resp (either (and (= 4 (get-property rqst "readyState"))
+                           (maybe (cont/continue (get-property rqst "responseText"))))
+                      (cont/break nothing))]
+     resp))
   ([method url data]
-   (cont/Continuation (fn [c]
-                        (let [r (new-http-request)]
-                          (w/handle-event r "readystatechange"
-                                          (fn []
-                                            (c r)))
-                          (send-http-request r method url data))))))
+   (for [rqst (cont/Continuation (fn [c]
+                                   (let [r (new-http-request)]
+                                     (http-request-handler r (fn []
+                                                               (c r)))
+                                     (send-http-request r method url data))))
+         resp (either (and (= 4 (get-property rqst "readyState"))
+                           (maybe (cont/continue (get-property rqst "responseText"))))
+                      (cont/break nothing))]
+     resp)))

@@ -270,8 +270,8 @@ EM_ASM(
 #ifdef TOCCATA_WASM
   EM_ASM_({
       setTimeout(function(){
-          _decRef(callToccata($1, sendRawArray([])))},
-      $0);
+             _decRef(callToccata($1, sendRawArray([])))},
+         $0);
           },
    (int)((Integer *)delay_0)->numVal, (int)f_1);
 #endif
@@ -292,10 +292,19 @@ EM_ASM(
 
   (inline C DOMNode "
 #ifdef TOCCATA_WASM
+/*
+TODO: something like this needs to happen to prevent leaks
+
+if (handler_2->refs > 0){
+  fprintf(stderr, \"\\n*** Event handler function must be a global function defined with 'defn'.\\n\");
+  abort();
+}
+*/
   EM_ASM_({
     objDeref($0).addEventListener(rcvString($1),
                  function(){
                   _decRef(callToccata($2, sendArray([])));
+                  return false;
                  });
           },
   extractObject(node_0), (int)key_1, (int)handler_2);
