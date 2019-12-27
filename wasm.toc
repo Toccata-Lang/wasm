@@ -1,7 +1,7 @@
 
 (add-ns cont (git-dependency "https://github.com/Toccata-Lang/continuation"
                              "continuation.toc"
-                             :sha "30b61ff"))
+                             :sha "29c75f0"))
 
 (inline C "
 #ifdef TOCCATA_WASM
@@ -40,7 +40,8 @@ EMSCRIPTEN_KEEPALIVE
 int strBuffer(int strPtr) {
   if (((Value *)strPtr)->type == StringBufferType) {
     return((int)&((String *)strPtr)->buffer);
-  } else if (((Value *)strPtr)->type == SubStringType) {
+  } else if (((Value *)strPtr)->type == SubStringType ||
+             ((Value *)strPtr)->type == SymbolType) {
     return((int)((SubString *)strPtr)->buffer);
   } else {
     fprintf(stderr, \"*** Invalid String structure from Javascript\\n\");
@@ -51,7 +52,8 @@ int strBuffer(int strPtr) {
 EMSCRIPTEN_KEEPALIVE
 int strLength(int strPtr) {
   if (((Value *)strPtr)->type != StringBufferType &&
-      ((Value *)strPtr)->type != SubStringType) {
+      ((Value *)strPtr)->type != SubStringType &&
+      ((Value *)strPtr)->type != SymbolType) {
     fprintf(stderr, \"*** Invalid String structure from Javascript\\n\");
     abort();
   }
@@ -112,13 +114,45 @@ int vectorConj(int vect, int value) {
   Vector *v = mutateVectConj((Vector *)vect, (Value *)value);
   return((int)v);
 }
+
+EMSCRIPTEN_KEEPALIVE
+int vectCount(Value *v) {
+  return(((Vector *)v)->count);
+}
+
+EMSCRIPTEN_KEEPALIVE
+Value *getVect(Vector *vect, unsigned index) {
+  return(vectGet(vect, index));
+}
+
+EMSCRIPTEN_KEEPALIVE
+int mapVec(int value) {
+  Value *v = hashMapVec((Value *)value);
+  return((int)v);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int valueType(Value *v) {
+  return(v->type);
+}
+
 #endif
 ")
 
 (defn init []
   (inline C "
 #ifdef TOCCATA_WASM
-EM_ASM(
+EM_ASM_({
+  IntegerType = $0;
+  StringBufferType = $1;
+  SubStringType = $2;
+  MaybeType = $3;
+  VectorType = $4;
+  SymbolType = $5;
+  BitmapIndexedType = $6;
+  ArrayNodeType = $7;
+  HashCollisionNodeType = $8;
+
   objTableSize = 1;
   objTable = Array.apply(null, Array(objTableSize));
 
@@ -219,8 +253,55 @@ EM_ASM(
       str += String.fromCharCode(stringBuffer[i]);
     }
     return str;
+  };
+
+  rcvInteger = function(v) {
+    let numVal = _intData(v);
+    return getValue(numVal, \"i64\");
+  };
+
+  rcvMaybe = function(v) {
+    let intBuff = _maybeData(v);
+    if (getValue(intBuff, \"i64\") == 0)
+      return false;
+    else
+      return true;
+  };
+
+  rcvArray = function(v) {
+    let arr = new Array(_vectCount(v));
+    for (var i = 0; i < _vectCount(v); i++) {
+      arr[i] = rcvValue(_getVect(v, i));
+    }
+    return arr;
+  };
+
+  rcvMap = function(v) {
+    let m = new Map(rcvArray(_mapVec(v)));
+    return m;
+  };
+
+  rcvValue = function(v) {
+    var valType = _valueType(v);
+    if (valType == IntegerType)
+      return rcvInteger(v);
+    else if (valType == MaybeType)
+      return rcvMaybe(v);
+    else if (valType == StringBufferType ||
+             valType == SubStringType ||
+             valType == SymbolType)
+      return rcvString(v);
+    else if (valType == BitmapIndexedType ||
+             valType == ArrayNodeType ||
+             valType == HashCollisionNodeType)
+      return rcvMap(v);
+    else if (valType == VectorType)
+      return rcvArray(v);
+    else
+      throw new Error(\"Cannot send value to Javascript of type: \" + valType);
   }
-);
+}, IntegerType, StringBufferType, SubStringType, MaybeType, VectorType, SymbolType,
+   BitmapIndexedType, ArrayNodeType, HashCollisionNodeType);
 #endif
   return(integerValue(1));
 "))
