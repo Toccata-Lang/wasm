@@ -364,8 +364,8 @@ EM_ASM_({
 
 (defn wait [delay]
   (cont/Continuation (fn [c]
-                  (set-timeout* delay (fn []
-                                        (c nothing))))))
+                       (set-timeout* delay (fn []
+                                             (c nothing))))))
 
 (defn handle-event [node key handler]
   (assert (instance? DOMObject node))
@@ -393,18 +393,18 @@ if (handler_2->refs > 0){
   dec_and_free(key_1, 1);
   return(node_0);\n"))
 
-;; (defn alert* [s]
-;;   (assert (instance? String s))
-;;   (inline C String "
-;;    EM_ASM_({
-;;      alert(rcvString($0));},
-;;    (int)s_0);
-;;    dec_and_free(s_0, 1);
-;;    return(nothing);\n"))
+(defn alert* [s]
+  (assert (instance? String s))
+  (inline C String "
+   EM_ASM_({
+     alert(rcvString($0));},
+   (int)s_0);
+   dec_and_free(s_0, 1);
+   return(nothing);\n"))
 
-;; (defn alert [& xs]
-;;   (-> xs
-;;       (map str)
-;;       (interpose " ")
-;;       to-str
-;;       alert*))
+(defn alert [& xs]
+  (-> xs
+      (map str)
+      (interpose " ")
+      to-str
+      alert*))

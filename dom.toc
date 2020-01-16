@@ -1,15 +1,6 @@
 
 (add-ns wasm (module "wasm.toc"))
 
-(add-ns h (git-dependency "https://github.com/Toccata-Lang/html-css.git"
-                          "html.toc"
-                          :sha "0f86959"))
-(add-ns s (git-dependency "https://github.com/Toccata-Lang/html-css.git"
-                          "svg.toc"
-                          :sha "0f86959"))
-(add-ns d (git-dependency "https://github.com/Toccata-Lang/html-css.git"
-                          "document.toc"
-                          :sha "0f86959"))
 (add-ns cont (git-dependency "https://github.com/Toccata-Lang/continuation"
                              "continuation.toc"
                              :sha "29c75f0"))
@@ -18,12 +9,29 @@
   (create-node [x]
     (create-node (str x))))
 
+(defn node= [n1 n2]
+  (inline C Maybe "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     return sendMaybe(objDeref($0) == objDeref($1));},
+   extractObject(n1_0), extractObject(n2_1));
+#else
+Value *x = nothing;
+#endif
+   dec_and_free(n1_0, 1);
+   dec_and_free(n2_1, 1);
+   return((Value *)x);\n"))
+
 (deftype DOMNode [x]
   (assert (instance? Opaque x))
 
   Stringable
   (string-list [_]
-    (list "<DOMNode>")))
+    (list "<DOMNode>"))
+
+  Eq
+  (=* [n1 n2]
+    (node= n1 n2)))
 
 (deftype XMLHttpRequest [x]
   (assert (instance? Opaque x))
@@ -250,7 +258,7 @@ Value *x = nothing;
   dec_and_free(value_2, 1);
   return(node_0);\n"))
 
-(defn child-nodes [node]
+(defn child-nodes* [node]
   (assert (instance? DOMNode node))
 
   (inline C "
@@ -263,6 +271,9 @@ Value *x = nothing;
 #endif
    dec_and_free(node_0, 1);
    return((Value *)x);\n"))
+
+(defn child-nodes [node]
+  (map (child-nodes* node) DOMNode))
 
 (defn append-child [node child]
   (assert (instance? DOMNode node))
@@ -385,11 +396,7 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
              let elements = document.getElementsByTagName(rcvString($0));
-             let vect = _mallocVector();
-             for (var i = 0; i < elements.length; i++) {
-               _vectorConj(vect, sendValue(elements[i]));
-             }
-             return vect;}, (int)s_0);
+             return sendValue(Array.from(elements));}, (int)s_0);
 #else
    Vector *x = empty_vect;
 #endif
@@ -397,8 +404,7 @@ Value *x = nothing;
    return((Value *)x);\n"))
 
 (defn get-elements-by-tag-name [s]
-  (map (node-get-elements-by-tag s)
-       DOMNode))
+  (map (node-get-elements-by-tag s) DOMNode))
 
 (defn text-node [s]
   (assert (instance? String s))
@@ -458,49 +464,6 @@ Value *x = stringValue(\"\");
   DOM
   (create-node [s]
     (DOMNode (text-node s))))
-
-(extend-type h/HTMLTag
-  DOM
-  (create-node [t]
-    (let [node (DOMNode (createElement (.name t)))]
-      ;; TODO: line counts are way off on this error message
-      ;; (map (seq (.attributes t) (fn [[k v]]
-      ;;                             (set-attribute node (str k) (str v)))))
-      (set-attribute node "style" (-> (.styling t)
-                                      (.styles)
-                                      (reduce [] (fn [v styling]
-                                                   (conj v (d/html styling))))
-                                      (interpose "; ")
-                                      d/html-str))
-      (set-attribute node "class" (-> (.class t)
-                                      (.classes)
-                                      keys
-                                      (interpose " ")
-                                      d/html-str))
-      (map (seq (.attributes t)) (fn [[k v]]
-                                   (set-attribute node (str k) (str v))))
-      (inner-html node (d/html-str (.contents t)))
-      node)))
-
-(extend-type s/SVGTag
-  DOM
-  (create-node [t]
-    (let [node (DOMNode (createElementNS (.name t)))]
-      (map (seq (.attributes t)) (fn [[k v]]
-                                   (set-attribute node (str k) (str v))))
-      (set-attribute node "style" (-> (.styling t)
-                                      (.styles)
-                                      (reduce [] (fn [v styling]
-                                                   (conj v (d/html styling))))
-                                      (interpose "; ")
-                                      d/html-str))
-      (set-attribute node "class" (-> (.class t)
-                                      (.classes)
-                                      keys
-                                      (interpose " ")
-                                      d/html-str))
-      (inner-html node (d/html-str (.contents t)))
-      node)))
 
 (defn new-http-request* []
   (inline C Opaque "
