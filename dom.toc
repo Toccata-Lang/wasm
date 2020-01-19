@@ -213,6 +213,8 @@ Value *x = stringValue(\"\");
 #else
 Value *x = stringValue(\"\");
 #endif
+  dec_and_free(node_0, 1);
+  dec_and_free(key_1, 1);
   return((Value *)x);\n"))
 
 (defn get-checked [node]
@@ -226,6 +228,7 @@ Value *x = stringValue(\"\");
 #else
 Value *x = nothing;
 #endif
+  dec_and_free(node_0, 1);
   return((Value *)x);\n"))
 
 (defn set-attribute [node key value]
@@ -358,6 +361,42 @@ Value *x = nothing;
   ([node s]
    (map (node-element-by-id node s)
         DOMNode)))
+
+(defn parent* [node]
+  (assert (instance? DOMNode node))
+
+  (inline C Opaque "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     var node = objDeref($0); 
+     return sendValue(node.parentNode);},
+   extractObject(node_0));
+#else
+   Value *x = opaqueValue(0, 0);
+#endif
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+
+(defn parent [node]
+  (DOMNode (parent* node)))
+
+(defn next-sibling* [node]
+  (assert (instance? DOMNode node))
+
+  (inline C Maybe "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     var node = objDeref($0); 
+     return sendMaybe(node.nextSibling);},
+   extractObject(node_0));
+#else
+   Value *x = opaqueValue(0, 0);
+#endif
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+
+(defn next-sibling [node]
+  (map (next-sibling* node) DOMNode))
 
 (defn remove [node]
   (assert (instance? DOMNode node))
