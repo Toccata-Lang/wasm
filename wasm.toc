@@ -37,6 +37,16 @@ int mallocStr(int len) {
 }
 
 EMSCRIPTEN_KEEPALIVE
+int emptyHashMap(int len) {
+  return((int)&emptyBMI);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int assocHashMap(int m, int k, int v) {
+  return((int)hashMapAssoc((Value *)m, (Value *)k, (Value *)v));
+}
+
+EMSCRIPTEN_KEEPALIVE
 int strBuffer(int strPtr) {
   if (((Value *)strPtr)->type == StringBufferType) {
     return((int)&((String *)strPtr)->buffer);
@@ -207,7 +217,7 @@ EM_ASM_({
   sendRawArray = function(arr) {
     let vect = _mallocVector();
     arr.forEach(function(element) {
-      _vectorConj(vect, element);
+      vect = _vectorConj(vect, element);
     });
     return vect;
   };
@@ -215,9 +225,17 @@ EM_ASM_({
   sendArray = function(arr) {
     let vect = _mallocVector();
     arr.forEach(function(element) {
-      _vectorConj(vect, sendValue(element));
+      vect = _vectorConj(vect, sendValue(element));
     });
     return vect;
+  };
+
+  sendMap = function(mapVal) {
+    let tocMap = _emptyHashMap();
+    for (let [key, value] of mapVal) {
+      tocMap = _assocHashMap(tocMap, sendValue(key), sendValue(value));
+    };
+    return tocMap;
   };
 
   sendMaybe = function(x) {
@@ -351,13 +369,41 @@ EM_ASM_({
 #ifdef TOCCATA_WASM
   EM_ASM_({
       setTimeout(function(){
-             _decRef(callToccata($1, sendRawArray([])))},
+             _decRef(callToccata($1, sendArray([])))},
          $0);
           },
    (int)((Integer *)delay_0)->numVal, (int)f_1);
 #endif
   dec_and_free(delay_0, 1);
   return(nothing);\n"))
+
+(defn get-obj-field [node key]
+  (assert (instance? DOMObject node))
+
+  (inline C Integer "
+#ifdef TOCCATA_WASM
+  int x = EM_ASM_INT({
+               return sendValue(objDeref($0)[rcvString($1)])},
+  extractObject(node_0), (int)key_1);
+#else
+Value *x = integerValue(-1);
+#endif
+  dec_and_free(node_0, 1);
+  dec_and_free(key_1, 1);
+  return((Value *)x);\n"))
+
+(defn set-obj-field [node key value]
+  (assert (instance? DOMObject node))
+
+  (inline C DOMNode "
+#ifdef TOCCATA_WASM
+  EM_ASM_({
+    objDeref($0)[rcvString($1)] = rcvValue($2);},
+  extractObject(node_0), (int)key_1, (int)value_2);
+#endif
+  dec_and_free(key_1, 1);
+  dec_and_free(value_2, 1);
+  return(node_0);\n"))
 
 (defn async [f]
   (f identity))
