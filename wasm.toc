@@ -423,6 +423,32 @@ Value *x = integerValue(-1);
 
     (set-obj-field* obj field value)))
 
+(deftype ReadOnlyField [field-name map-fn]
+  (assert (instance? FieldName field-name))
+
+  Function
+  (invoke [_ obj]
+    (map (get-obj-field obj field-name) map-fn))
+
+  Container
+  (map [_ f]
+    (ReadOnlyField field-name f)))
+
+(defn read-only-field [field-name]
+  (ReadOnlyField field-name identity))
+
+(deftype ReadWriteField [field-name]
+  (assert (instance? FieldName field-name))
+
+  Function
+  (invoke [_ obj]
+    (get-obj-field obj field-name))
+  (invoke [_ obj value]
+    (set-obj-field obj field-name value)))
+
+(defn read-write-field [field-name]
+  (ReadWriteField field-name))
+
 (defn async [f]
   (f identity))
 
@@ -471,3 +497,15 @@ if (handler_2->refs > 0){
       (interpose " ")
       to-str
       alert*))
+
+(defn iterableto-vect [v]
+  (inline C Vector "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+             return sendArray(objDeref($0));},
+           extractObject(v_0));
+#else
+   Value *x = empty_vect;
+#endif
+   dec_and_free(v_0, 1);
+   return((Value *)x);\n"))
