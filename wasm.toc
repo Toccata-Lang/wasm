@@ -362,7 +362,7 @@ EM_ASM_({
 "))
 
 (defn callToccata [f args]
-  (apply (deref f) (deref args)))
+  (apply (deref f) (map (deref args) deref)))
 
 (JS-callable callToccata 2)
 
@@ -498,7 +498,15 @@ if (handler_2->refs > 0){
       to-str
       alert*))
 
-(defn iterableto-vect [v]
+(defn new-object []
+  (inline C Opaque "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     return new sendValue(Object());});
+#endif
+   return((Value *)x);\n"))
+
+(defn iterable-to-vect [v]
   (inline C Vector "
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
@@ -506,6 +514,18 @@ if (handler_2->refs > 0){
            extractObject(v_0));
 #else
    Value *x = empty_vect;
+#endif
+   dec_and_free(v_0, 1);
+   return((Value *)x);\n"))
+
+(defn obj-to-val [v]
+  (inline C "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+             return sendValue(objDeref($0));},
+           extractObject(v_0));
+#else
+   Value *x = nothing;
 #endif
    dec_and_free(v_0, 1);
    return((Value *)x);\n"))

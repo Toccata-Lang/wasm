@@ -87,7 +87,7 @@ Value *x = nothing;
 (def value (read-write-field 'value))
 (def checked (read-write-field 'checked))
 (def child-nodes (map (read-only-field 'childNodes) (fn [node-list]
-                                                      (map (wasm/iterableto-vect node-list)
+                                                      (map (wasm/iterable-to-vect node-list)
                                                            DOMNode))))
 (def parent-node (map (read-only-field 'parentNode) DOMNode))
 (def first-child (map (read-only-field 'firstChild) DOMNode))
@@ -464,3 +464,39 @@ objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
                            (maybe (cont/continue (get-attribute rqst "responseText"))))
                       (cont/break nothing))]
      resp)))
+
+(defn scroll-intersection [el-node f]
+  (assert (instance? DOMNode el-node))
+
+  (inline C String "
+// TODO: something like this needs to happen to prevent leaks
+if (f_1->refs > 0){
+  fprintf(stderr, \"\\n*** Event handler function must be a global function defined with 'defn'.\\n\");
+  abort();
+}
+
+#ifdef TOCCATA_WASM
+   EM_ASM({
+     let node = objDeref($1);
+     
+     let options = Object({
+       'root': document.querySelector('#scrollArea'),
+       'rootMargin': '0px',
+       'threshold': 0.0
+     });
+     
+     let callback = function(entries, observer) {
+       entries.forEach(function(entry) {
+         _decRef(callToccata($0, sendArray([sendValue(entry)])));
+       });
+     };
+     
+     let observer = new IntersectionObserver(callback, options);
+     observer.observe(node);},
+   (int)f_1, extractDOMObject(el_node_0));
+#endif
+   dec_and_free(el_node_0, 1);
+   return(nothing);\n"))
+
+(def isIntersecting (wasm/read-only-field 'isIntersecting))
+(def target (map (wasm/read-only-field 'target) DOMNode))
