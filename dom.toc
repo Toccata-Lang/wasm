@@ -14,7 +14,7 @@
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
      return sendMaybe(objDeref($0) == objDeref($1));},
-   extractObject(n1_0), extractObject(n2_1));
+   extractDOMObject(n1_0), extractDOMObject(n2_1));
 #else
 Value *x = nothing;
 #endif
@@ -28,6 +28,12 @@ Value *x = nothing;
   Stringable
   (string-list [_]
     (list "<DOMNode>"))
+
+  wasm/ObjGetterSetter
+  (wasm/get-obj-field [_ field]
+    (wasm/get-obj-field x field))
+  (wasm/set-obj-field [_ field value]
+    (wasm/set-obj-field x field value))
 
   Eq
   (=* [n1 n2]
@@ -51,7 +57,7 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
      return sendString(objDeref($0).innerHTML);},
-   extractObject(node_0));
+   extractDOMObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -65,7 +71,7 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
    EM_ASM_({
      objDeref($0).innerHTML = rcvString($1);},
-   extractObject(node_0), (int)s_1);
+   extractDOMObject(node_0), (int)s_1);
 #endif
    dec_and_free(s_1, 1);
    return(node_0);\n")))
@@ -78,7 +84,7 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
      return sendString(objDeref($0).outerHTML);},
-   extractObject(node_0));
+   extractDOMObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -92,7 +98,7 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
    EM_ASM_({
      objDeref($0).outerHTML = rcvString($1);},
-   extractObject(node_0), (int)s_1);
+   extractDOMObject(node_0), (int)s_1);
 #endif
    dec_and_free(s_1, 1);
    return(node_0);\n")))
@@ -105,7 +111,7 @@ Value *x = stringValue(\"\");
    int x = EM_ASM_INT({
      console.log(\"obj: \" + objDeref($0));
      return sendValue(0);},
-   extractObject(node_0));
+   extractDOMObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -119,7 +125,7 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
      return sendValue(objDeref($0).clientY);},
-   extractObject(node_0));
+   extractDOMObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -134,7 +140,7 @@ Value *x = stringValue(\"\");
    int x = EM_ASM_INT({let rect = objDeref($0).getBoundingClientRect();
                        return sendValue([rect.top, rect.bottom,
                                          Math.round(rect.left), Math.round(rect.right)]);},
-                      extractObject(node_0));
+                      extractDOMObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -153,7 +159,7 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
    EM_ASM_({
 objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)));},
-           extractObject(node_0), eventName_1, handler_2);
+           extractDOMObject(node_0), eventName_1, handler_2);
 #endif
    dec_and_free(node_0, 1);
    dec_and_free(eventName_1, 1);
@@ -163,7 +169,7 @@ objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)));},
 #ifdef TOCCATA_WASM
    EM_ASM_({
 objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
-           extractObject(node_0), eventName_1, handler_2);
+           extractDOMObject(node_0), eventName_1, handler_2);
 #endif
    dec_and_free(node_0, 1);
    dec_and_free(eventName_1, 1);
@@ -179,22 +185,7 @@ objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
 #ifdef TOCCATA_WASM
   int x = EM_ASM_INT({
                return sendValue(objDeref($0).value)},
-  extractObject(node_0));
-#else
-Value *x = stringValue(\"\");
-#endif
-  return((Value *)x);\n"))
-
-(defn get-property [node key]
-  (assert (instance? DOMObject node))
-  (assert (instance? String key))
-
-  (inline C "
-#ifdef TOCCATA_WASM
-  int x = EM_ASM_INT({
-               return sendValue(objDeref($0)[rcvString($1)])},
-  extractObject(node_0), (int)key_1);
-  dec_and_free(key_1, 1);
+  extractDOMObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -202,20 +193,8 @@ Value *x = stringValue(\"\");
 
 (defn get-attribute [node key]
   (assert (instance? DOMObject node))
-  (assert (instance? String key))
 
-  (inline C "
-#ifdef TOCCATA_WASM
-  int x = EM_ASM_INT({
-               return sendValue(objDeref($0)[rcvString($1)])},
-  extractObject(node_0), (int)key_1);
-  dec_and_free(key_1, 1);
-#else
-Value *x = stringValue(\"\");
-#endif
-  dec_and_free(node_0, 1);
-  dec_and_free(key_1, 1);
-  return((Value *)x);\n"))
+  (wasm/get-obj-field (.x node) key))
 
 (defn get-checked [node]
   (assert (instance? DOMNode node))
@@ -224,7 +203,7 @@ Value *x = stringValue(\"\");
 #ifdef TOCCATA_WASM
   int x = EM_ASM_INT({
                return sendMaybe(objDeref($0).checked)},
-  extractObject(node_0));
+  extractDOMObject(node_0));
 #else
 Value *x = nothing;
 #endif
@@ -240,7 +219,7 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
   EM_ASM_({
     objDeref($0).setAttribute(rcvString($1), rcvString($2))},
-  extractObject(node_0), (int)key_1, (int)value_2);
+  extractDOMObject(node_0), (int)key_1, (int)value_2);
 #endif
   dec_and_free(key_1, 1);
   dec_and_free(value_2, 1);
@@ -255,7 +234,7 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
   EM_ASM_({
     objDeref($0).style[rcvString($1)] = rcvString($2);},
-  extractObject(node_0),(int)key_1, (int)value_2);
+  extractDOMObject(node_0),(int)key_1, (int)value_2);
 #endif
   dec_and_free(key_1, 1);
   dec_and_free(value_2, 1);
@@ -268,7 +247,7 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
              return sendArray(objDeref($0).childNodes);},
-           extractObject(node_0));
+           extractDOMObject(node_0));
 #else
    Value *x = nothing;
 #endif
@@ -286,8 +265,8 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
   EM_ASM_({
     objDeref($0).appendChild(objDeref($1))},
-  extractObject(node_0),
-  extractObject(child_1));
+  extractDOMObject(node_0),
+  extractDOMObject(child_1));
 #endif
   dec_and_free(child_1, 1);
   return(node_0);\n"))
@@ -301,8 +280,8 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
   EM_ASM_({
     objDeref($0).insertBefore(objDeref($1), null)},
-  extractObject(node_0),
-  extractObject(child_1));
+  extractDOMObject(node_0),
+  extractDOMObject(child_1));
 #endif
   dec_and_free(child_1, 1);
   return(node_0);\n"))
@@ -315,9 +294,9 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
   EM_ASM_({
     objDeref($0).insertBefore(objDeref($1), objDeref($2))},
-  extractObject(node_0),
-  extractObject(child_1),
-  extractObject(ref_node_2));
+  extractDOMObject(node_0),
+  extractDOMObject(child_1),
+  extractDOMObject(ref_node_2));
 #endif
   dec_and_free(child_1, 1);
   dec_and_free(ref_node_2, 1);
@@ -346,7 +325,7 @@ Value *x = nothing;
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
              return sendMaybe($0.getElementById(rcvString($1)));},
-           extractObject(node_0), (int)s_1);
+           extractDOMObject(node_0), (int)s_1);
 #else
    Value *x = nothing;
 #endif
@@ -362,41 +341,120 @@ Value *x = nothing;
    (map (node-element-by-id node s)
         DOMNode)))
 
-(defn parent* [node]
+(defn parent-node [node]
   (assert (instance? DOMNode node))
 
-  (inline C Opaque "
-#ifdef TOCCATA_WASM
-   int x = EM_ASM_INT({
-     var node = objDeref($0); 
-     return sendValue(node.parentNode);},
-   extractObject(node_0));
-#else
-   Value *x = opaqueValue(0, 0);
-#endif
-   dec_and_free(node_0, 1);
-   return((Value *)x);\n"))
+  (map (wasm/get-obj-field (.x node) 'parentNode) DOMNode))
 
-(defn parent [node]
-  (DOMNode (parent* node)))
-
-(defn next-sibling* [node]
+(defn first-child [node]
   (assert (instance? DOMNode node))
 
-  (inline C Maybe "
-#ifdef TOCCATA_WASM
-   int x = EM_ASM_INT({
-     var node = objDeref($0); 
-     return sendMaybe(node.nextSibling);},
-   extractObject(node_0));
-#else
-   Value *x = opaqueValue(0, 0);
-#endif
-   dec_and_free(node_0, 1);
-   return((Value *)x);\n"))
+  (map (wasm/get-obj-field (.x node) 'firstChild) DOMNode))
 
 (defn next-sibling [node]
-  (map (next-sibling* node) DOMNode))
+  (assert (instance? DOMNode node))
+
+  (map (wasm/get-obj-field (.x node) 'nextSibling) DOMNode))
+
+(defn previous-sibling [node]
+  (assert (instance? DOMNode node))
+
+  (map (wasm/get-obj-field (.x node) 'previousSibling) DOMNode))
+
+(defn scroll-top
+  ([node]
+   (assert (instance? DOMNode node))
+
+   (inline C String "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     return sendInteger(objDeref($0).scrollTop);},
+   extractDOMObject(node_0));
+#else
+Value *x = integerValue(0);
+#endif
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+  ([node s]
+   (assert (instance? DOMNode node))
+   (assert (instance? Integer s))
+
+   (inline C DOMNode "
+#ifdef TOCCATA_WASM
+   EM_ASM_({
+     objDeref($0).scrollTop = rcvInteger($1);},
+   extractDOMObject(node_0), (int)s_1);
+#endif
+   dec_and_free(s_1, 1);
+   return(node_0);\n")))
+
+(defn scroll-by
+  ([node yoff]
+   (assert (instance? DOMNode node))
+   (assert (instance? Integer yoff))
+
+   (inline C DOMNode "
+#ifdef TOCCATA_WASM
+   EM_ASM_({
+     objDeref($0).scrollBy(0, rcvInteger($1));},
+   extractDOMObject(node_0), (int)yoff_1);
+#endif
+   dec_and_free(yoff_1, 1);
+   return(node_0);\n")))
+
+(defn scroll-height [node]
+  (assert (instance? DOMNode node))
+
+  (inline C String "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     return sendInteger(objDeref($0).scrollHeight);},
+   extractDOMObject(node_0));
+#else
+Value *x = integerValue(0);
+#endif
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+
+(defn client-height [node]
+  (assert (instance? DOMNode node))
+
+  (inline C Integer "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     return sendInteger(objDeref($0).clientHeight);},
+   extractDOMObject(node_0));
+#else
+Value *x = integerValue(0);
+#endif
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+
+(defn offset-top [node]
+  (assert (instance? DOMNode node))
+
+  (inline C String "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     return sendInteger(objDeref($0).offsetTop);},
+   extractDOMObject(node_0));
+#else
+Value *x = integerValue(0);
+#endif
+   dec_and_free(node_0, 1);
+   return((Value *)x);\n"))
+
+(defn prepend-child [peeps el]
+  (inline C String "
+#ifdef TOCCATA_WASM
+   EM_ASM({
+  peeps.insertBefore(objDeref($1), objDeref($0).firstChild);
+},
+   extractDOMObject(peeps_0), extractDOMObject(el_1));
+#endif
+   dec_and_free(peeps_0, 1);
+   dec_and_free(el_1, 1);
+   return(nothing);\n"))
 
 (defn remove [node]
   (assert (instance? DOMNode node))
@@ -406,7 +464,7 @@ Value *x = nothing;
    EM_ASM_({
      var node = objDeref($0); 
      node.parentNode.removeChild(node);},
-   extractObject(node_0));
+   extractDOMObject(node_0));
 #endif
    return(node_0);\n"))
 
@@ -491,7 +549,7 @@ Value *x = nothing;
    int x = EM_ASM_INT({
      var e = objDeref($0);
      return(sendValue(e.value));},
-   extractObject(node_0));
+   extractDOMObject(node_0));
 #else
 Value *x = stringValue(\"\");
 #endif
@@ -529,7 +587,7 @@ Value *x = stringValue(\"\");
      let rqst = objDeref($0); 
      rqst.open(rcvString($1), rcvString($2));
      rqst.send();},
-   extractObject(rqst_0),
+   extractDOMObject(rqst_0),
    (int)method_1,
    (int)url_2
 );
@@ -550,7 +608,7 @@ Value *x = stringValue(\"\");
      let rqst = objDeref($0); 
      rqst.open(rcvString($1), rcvString($2));
      rqst.send(rcvString($3));},
-   extractObject(rqst_0),
+   extractDOMObject(rqst_0),
    (int)method_1,
    (int)url_2,
    (int)data_3);
@@ -573,7 +631,7 @@ Value *x = stringValue(\"\");
                   }
                  });
           },
-  extractObject(r_0), (int)f_1);
+  extractDOMObject(r_0), (int)f_1);
 #endif
   return(r_0);\n"))
 
@@ -584,8 +642,8 @@ Value *x = stringValue(\"\");
                                      (http-request-handler r (fn []
                                                                (c r)))
                                      (send-http-request r method url))))
-         resp (either (and (= 4 (get-property rqst "readyState"))
-                           (maybe (cont/continue (get-property rqst "responseText"))))
+         resp (either (and (= 4 (get-attribute rqst "readyState"))
+                           (maybe (cont/continue (get-attribute rqst "responseText"))))
                       (cont/break nothing))]
      resp))
   ([method url data]
@@ -594,7 +652,7 @@ Value *x = stringValue(\"\");
                                      (http-request-handler r (fn []
                                                                (c r)))
                                      (send-http-request r method url data))))
-         resp (either (and (= 4 (get-property rqst "readyState"))
-                           (maybe (cont/continue (get-property rqst "responseText"))))
+         resp (either (and (= 4 (get-attribute rqst "readyState"))
+                           (maybe (cont/continue (get-attribute rqst "responseText"))))
                       (cont/break nothing))]
      resp)))

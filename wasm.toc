@@ -10,8 +10,12 @@
 
 (inline C "
 
-int extractObject(Value *objRef) {
+int extractDOMObject(Value *objRef) {
   return((int)((Opaque *)((ReifiedVal *)objRef)->impls[0])->ptr);
+}
+
+int extractObject(Value *objRef) {
+  return((int)((Opaque *)objRef)->ptr);
 }
 
 #ifdef TOCCATA_WASM
@@ -183,9 +187,9 @@ EM_ASM_({
   };
 
   objDeref = function(n) {
-    if (n < objTableSize)
+    if (n < objTableSize) {
       return objTable[n];
-    else
+    } else
       return null;
   };
 
@@ -377,13 +381,16 @@ EM_ASM_({
   dec_and_free(delay_0, 1);
   return(nothing);\n"))
 
-(defn get-obj-field [node key]
-  (assert (instance? DOMObject node))
+(def FieldName (comp String
+                     Symbol))
 
-  (inline C Integer "
+(defn get-obj-field* [node key]
+  (assert (instance? FieldName key))
+
+  (inline C Maybe "
 #ifdef TOCCATA_WASM
   int x = EM_ASM_INT({
-               return sendValue(objDeref($0)[rcvString($1)])},
+               return sendMaybe(objDeref($0)[rcvString($1)])},
   extractObject(node_0), (int)key_1);
 #else
 Value *x = integerValue(-1);
@@ -392,10 +399,10 @@ Value *x = integerValue(-1);
   dec_and_free(key_1, 1);
   return((Value *)x);\n"))
 
-(defn set-obj-field [node key value]
-  (assert (instance? DOMObject node))
+(defn set-obj-field* [node key value]
+  (assert (instance? FieldName key))
 
-  (inline C DOMNode "
+  (inline C Opaque "
 #ifdef TOCCATA_WASM
   EM_ASM_({
     objDeref($0)[rcvString($1)] = rcvValue($2);},
@@ -404,6 +411,17 @@ Value *x = integerValue(-1);
   dec_and_free(key_1, 1);
   dec_and_free(value_2, 1);
   return(node_0);\n"))
+
+(defprotocol ObjGetterSetter
+  (get-obj-field [obj field]
+    (assert (instance? FieldName field))
+
+    (get-obj-field* obj field))
+
+  (set-obj-field [obj field value]
+    (assert (instance? FieldName field))
+
+    (set-obj-field* obj field value)))
 
 (defn async [f]
   (f identity))
@@ -414,10 +432,9 @@ Value *x = integerValue(-1);
                                              (c nothing))))))
 
 (defn handle-event [node key handler]
-  (assert (instance? DOMObject node))
   (assert (instance? String key))
 
-  (inline C DOMNode "
+  (inline C "
 #ifdef TOCCATA_WASM
 /*
 TODO: something like this needs to happen to prevent leaks
@@ -434,7 +451,7 @@ if (handler_2->refs > 0){
                   return false;
                  });
           },
-  extractObject(node_0), (int)key_1, (int)handler_2);
+  extractDOMObject(node_0), (int)key_1, (int)handler_2);
 #endif
   dec_and_free(key_1, 1);
   return(node_0);\n"))
