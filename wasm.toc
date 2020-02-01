@@ -412,7 +412,7 @@ Value *x = integerValue(-1);
   dec_and_free(value_2, 1);
   return(node_0);\n"))
 
-(defprotocol ObjGetterSetter
+(defprotocol JSInterOp
   (get-obj-field [obj field]
     (assert (instance? FieldName field))
 
@@ -485,9 +485,11 @@ if (handler_2->refs > 0){
 (defn alert* [s]
   (assert (instance? String s))
   (inline C String "
+#ifdef TOCCATA_WASM
    EM_ASM_({
      alert(rcvString($0));},
    (int)s_0);
+#endif
    dec_and_free(s_0, 1);
    return(nothing);\n"))
 
@@ -503,6 +505,8 @@ if (handler_2->refs > 0){
 #ifdef TOCCATA_WASM
    int x = EM_ASM_INT({
      return new sendValue(Object());});
+#else
+   Value *x = (Value *)my_malloc(sizeof(Opaque));
 #endif
    return((Value *)x);\n"))
 
@@ -513,7 +517,7 @@ if (handler_2->refs > 0){
              return sendArray(objDeref($0));},
            extractObject(v_0));
 #else
-   Value *x = empty_vect;
+   Value *x = (Value *)empty_vect;
 #endif
    dec_and_free(v_0, 1);
    return((Value *)x);\n"))
