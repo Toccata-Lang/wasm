@@ -4,6 +4,15 @@
 (add-ns cont (git-dependency "https://github.com/Toccata-Lang/continuation"
                              "continuation.toc"
                              :sha "29c75f0"))
+(add-ns h (git-dependency "https://github.com/Toccata-Lang/html-css.git"
+                          "html.toc"
+                          :sha "fb681c6"))
+(add-ns s (git-dependency "https://github.com/Toccata-Lang/html-css.git"
+                          "svg.toc"
+                          :sha "fb681c6"))
+(add-ns d (git-dependency "https://github.com/Toccata-Lang/html-css.git"
+                          "document.toc"
+                          :sha "fb681c6"))
 
 (defprotocol DOM
   (create-nodes [x]
@@ -336,6 +345,53 @@ objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
   DOM
   (create-nodes [s]
     [(DOMNode (text-node s))]))
+
+(extend-type h/HTMLTag
+  DOM
+  (create-nodes [t]
+    (let [node (DOMNode (createElement (.name t)))]
+      ;; TODO: line counts are way off on this error message
+      ;; (map (seq (.attributes t) (fn [[k v]]
+      ;;                             (set-attribute node (str k) (str v)))))
+      (set-attribute node "style" (-> (.styling t)
+                                      (.styles)
+                                      (reduce [] (fn [v styling]
+                                                   (conj v (d/html styling))))
+                                      (interpose "; ")
+                                      d/html-str))
+      (set-attribute node "class" (-> (.class t)
+                                      (.classes)
+                                      keys
+                                      (interpose " ")
+                                      d/html-str))
+      (map (seq (.attributes t)) (fn [[k v]]
+                                   (set-attribute node (str k) (str v))))
+      (for [el (.contents t)
+            el-node (create-nodes el)]
+        (append-child node el-node))
+      [node])))
+
+(extend-type s/SVGTag
+  DOM
+  (create-nodes [t]
+    (let [node (DOMNode (createElementNS (.name t)))]
+      (map (seq (.attributes t)) (fn [[k v]]
+                                   (set-attribute node (str k) (str v))))
+      (set-attribute node "style" (-> (.styling t)
+                                      (.styles)
+                                      (reduce [] (fn [v styling]
+                                                   (conj v (d/html styling))))
+                                      (interpose "; ")
+                                      d/html-str))
+      (set-attribute node "class" (-> (.class t)
+                                      (.classes)
+                                      keys
+                                      (interpose " ")
+                                      d/html-str))
+      (for [el (.contents t)
+            el-node (create-nodes el)]
+        (append-child node el-node))
+      [node])))
 
 (defn new-http-request* []
   (inline C Opaque "
