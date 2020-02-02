@@ -39,39 +39,6 @@ Value *x = nothing;
   (=* [n1 n2]
     (node= n1 n2)))
 
-(deftype ReadOnlyField [field-name map-fn]
-  (assert (instance? wasm/FieldName field-name))
-
-  Function
-  (invoke [_ obj]
-    (assert (instance? DOMNode obj))
-
-    (map (wasm/get-obj-field obj field-name) map-fn))
-
-  Container
-  (map [_ f]
-    (ReadOnlyField field-name f)))
-
-(defn read-only-field [field-name]
-  (ReadOnlyField field-name identity))
-
-(deftype ReadWriteField [field-name]
-  (assert (instance? wasm/FieldName field-name))
-
-  Function
-  (invoke [_ obj]
-    (assert (instance? DOMNode obj))
-
-    (wasm/get-obj-field obj field-name))
-
-  (invoke [_ obj value]
-    (assert (instance? DOMNode obj))
-
-    (DOMNode (wasm/set-obj-field obj field-name value))))
-
-(defn read-write-field [field-name]
-  (ReadWriteField field-name))
-
 (deftype XMLHttpRequest [x]
   (assert (instance? Opaque x))
 
@@ -82,26 +49,26 @@ Value *x = nothing;
 (def DOMObject (comp DOMNode
                      XMLHttpRequest))
 
-(def inner-html (read-write-field 'innerHTML))
-(def outer-html (read-write-field 'outerHTML))
-(def value (read-write-field 'value))
-(def checked (read-write-field 'checked))
-(def child-nodes (map (read-only-field 'childNodes) (fn [node-list]
+(def inner-html (wasm/read-write-field 'innerHTML))
+(def outer-html (wasm/read-write-field 'outerHTML))
+(def value (wasm/read-write-field 'value))
+(def checked (wasm/read-write-field 'checked))
+(def child-nodes (map (wasm/read-only-field 'childNodes) (fn [node-list]
                                                       (map (wasm/iterable-to-vect node-list)
                                                            DOMNode))))
-(def parent-node (map (read-only-field 'parentNode) DOMNode))
-(def first-child (map (read-only-field 'firstChild) DOMNode))
-(def next-sibling (map (read-only-field 'nextSibling) DOMNode))
-(def previous-sibling (map (read-only-field 'previousSibling) DOMNode))
-(def scroll-top (read-write-field 'scrollTop))
-(def scroll-by (read-write-field 'scrollBy))
-(def scroll-height (read-write-field 'scrollHeight))
-(def client-height (read-write-field 'clientHeight))
-(def offset-top (read-write-field 'offsetTop))
+(def parent-node (map (wasm/read-only-field 'parentNode) DOMNode))
+(def first-child (map (wasm/read-only-field 'firstChild) DOMNode))
+(def next-sibling (map (wasm/read-only-field 'nextSibling) DOMNode))
+(def previous-sibling (map (wasm/read-only-field 'previousSibling) DOMNode))
+(def scroll-top (wasm/read-write-field 'scrollTop))
+(def scroll-by (wasm/read-write-field 'scrollBy))
+(def scroll-height (wasm/read-write-field 'scrollHeight))
+(def client-height (wasm/read-write-field 'clientHeight))
+(def offset-top (wasm/read-write-field 'offsetTop))
 
 ;; for MouseEvents
-(def client-x (read-only-field 'clientX))
-(def client-y (read-only-field 'clientY))
+(def client-x (wasm/read-only-field 'clientX))
+(def client-y (wasm/read-only-field 'clientY))
 
 (defn get-bounding-client-rect [node]
   (assert (instance? DOMNode node))
