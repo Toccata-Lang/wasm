@@ -18,6 +18,11 @@
   (create-nodes [x]
     (create-nodes (str x))))
 
+(extend-type Vector
+  DOM
+  (create-nodes [v]
+    (flat-map v create-nodes)))
+
 (defn node= [n1 n2]
   (inline C Maybe "
 #ifdef TOCCATA_WASM
@@ -38,6 +43,11 @@ Value *x = nothing;
   (string-list [_]
     (list "<DOMNode>"))
 
+  DOM
+  (create-nodes [_]
+    (print-err 'already-a-node)
+    (abort))
+  
   wasm/JSInterOp
   (wasm/get-obj-field [_ field]
     (wasm/get-obj-field x field))
