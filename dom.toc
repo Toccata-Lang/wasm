@@ -4,6 +4,9 @@
 (add-ns cont (git-dependency "https://github.com/Toccata-Lang/continuation"
                              "continuation.toc"
                              :sha "29c75f0"))
+(add-ns t (git-dependency "https://github.com/Toccata-Lang/html-css.git"
+                          "tag.toc"
+                          :sha "fb681c6"))
 (add-ns h (git-dependency "https://github.com/Toccata-Lang/html-css.git"
                           "html.toc"
                           :sha "fb681c6"))
@@ -15,6 +18,8 @@
                           :sha "fb681c6"))
 
 (defprotocol DOM
+  (scroll-handler [_ entry])
+
   (create-nodes [x]
     (create-nodes (str x))))
 
@@ -43,6 +48,13 @@ Value *x = nothing;
   (string-list [_]
     (list "<DOMNode>"))
 
+  Associative
+  (assoc [m k v]
+    (wasm/set-obj-field x k v))
+
+  (get [m k]
+    (wasm/get-obj-field x k))
+
   DOM
   (create-nodes [_]
     (print-err 'already-a-node)
@@ -58,6 +70,20 @@ Value *x = nothing;
   (=* [n1 n2]
     (node= n1 n2)))
 
+(deftype DOMEvent [x]
+  (assert (instance? Opaque x))
+
+  Stringable
+  (string-list [_]
+    (list "<DOMEvent>"))
+
+  Associative
+  (assoc [m k v]
+    (wasm/set-obj-field x k v))
+
+  (get [m k]
+    (wasm/get-obj-field x k)))
+
 (deftype XMLHttpRequest [x]
   (assert (instance? Opaque x))
 
@@ -67,6 +93,30 @@ Value *x = nothing;
 
 (def DOMObject (comp DOMNode
                      XMLHttpRequest))
+
+(defn document* []
+  (inline C Opaque "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     return sendObject(document);});
+#else
+  Value *x = opaqueValue((void *)0, (Destructor *)0);
+#endif
+   return((Value *)x);\n"))
+
+(def document (DOMNode (document*)))
+
+(defn window* []
+  (inline C Opaque "
+#ifdef TOCCATA_WASM
+   int x = EM_ASM_INT({
+     return sendObject(window);});
+#else
+  Value *x = opaqueValue((void *)0, (Destructor *)0);
+#endif
+   return((Value *)x);\n"))
+
+(def window (DOMNode (window*)))
 
 (def inner-html (wasm/read-write-field 'innerHTML))
 (def outer-html (wasm/read-write-field 'outerHTML))
@@ -108,31 +158,21 @@ Value *x = stringValue(\"\");
   ([node eventName handler] (add-event-listener node eventName handler nothing))
   ([node eventName handler capture]
    (assert (instance? DOMNode node))
-   (assert (instance? String eventName))
-   (assert (instance? String handler))
+   (assert (instance? FieldName eventName))
 
    (inline C Maybe "
-   if (isNothing(capture_3, \"\", 0)) {
 #ifdef TOCCATA_WASM
    EM_ASM_({
-objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)));},
-           extractDOMObject(node_0), eventName_1, handler_2);
+   objDeref($0).addEventListener(rcvString($1),
+        function (event) {
+            _decRef(callToccata($2, sendArray([sendValue(event)])));
+        }, rcvMaybe($3));},
+   extractDOMObject(node_0), (int)eventName_1, (int)handler_2, (int)capture_3);
 #endif
    dec_and_free(node_0, 1);
    dec_and_free(eventName_1, 1);
    dec_and_free(handler_2, 1);
    dec_and_free(capture_3, 1);
-} else {
-#ifdef TOCCATA_WASM
-   EM_ASM_({
-objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
-           extractDOMObject(node_0), eventName_1, handler_2);
-#endif
-   dec_and_free(node_0, 1);
-   dec_and_free(eventName_1, 1);
-   dec_and_free(handler_2, 1);
-   dec_and_free(capture_3, 1);
-}
    return(nothing);\n")))
 
 (defn get-attribute [node key]
@@ -385,8 +425,8 @@ objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
   DOM
   (create-nodes [t]
     (let [node (DOMNode (createElementNS (.name t)))]
-      (map (seq (.attributes t)) (fn [[k v]]
-                                   (set-attribute node (str k) (str v))))
+      ;; (map (seq (.attributes t)) (fn [[k v]]
+      ;;                              (set-attribute node (str k) (str v))))
       (set-attribute node "style" (-> (.styling t)
                                       (.styles)
                                       (reduce [] (fn [v styling]
@@ -398,6 +438,8 @@ objDeref($0).addEventListener(rcvString($1), eval(rcvString($2)), true);},
                                       keys
                                       (interpose " ")
                                       d/html-str))
+      (map (seq (.attributes t)) (fn [[k v]]
+                                   (set-attribute node (str k) (str v))))
       (for [el (.contents t)
             el-node (create-nodes el)]
         (append-child node el-node))
@@ -531,5 +573,137 @@ if (f_1->refs > 0){
    dec_and_free(el_node_0, 1);
    return(nothing);\n"))
 
+(defn scroll-intersection** [el-node f arg]
+  (assert (instance? DOMNode el-node))
+
+  (inline C String "
+// TODO: something like this needs to happen to prevent leaks
+if (f_1->refs > 0){
+  fprintf(stderr, \"\\n*** Event handler function must be a global function defined with 'defn'.\\n\");
+  abort();
+}
+
+#ifdef TOCCATA_WASM
+   EM_ASM({
+     let node = objDeref($1);
+     
+     let options = Object({
+       'root': document.querySelector('#scrollArea'),
+       'rootMargin': '0px',
+       'threshold': 0.0
+     });
+     
+     let callback = function(entries, observer) {
+       entries.forEach(function(entry) {
+         _decRef(callToccata($0, sendArray([$2, sendValue(entry)])));
+       });
+     };
+     
+     let observer = new IntersectionObserver(callback, options);
+     observer.observe(node);},
+   (int)f_1, extractDOMObject(el_node_0), (int)arg_2);
+#endif
+   dec_and_free(el_node_0, 1);
+   return(nothing);\n"))
+
+(defn scroll-intersection* [el-node inf-list]
+  (scroll-intersection** el-node scroll-handler inf-list))
+
 (def isIntersecting (wasm/read-only-field 'isIntersecting))
 (def target (map (wasm/read-only-field 'target) DOMNode))
+
+(deftype node-field [template field-setter field-data]
+  (assert (instance? w/ReadWriteField field-setter))
+
+  Stringable
+  (string-list [_]
+    (list "(node-field " (str template " " field-setter " " field-data) ")"))
+
+  d/DocElement
+  (d/css [_ classes]
+    (d/css template classes))
+
+  (d/html [_]
+    (d/html template))
+
+  t/UpdateTag
+  (t/attr [element attr-key value]
+    (node-field (t/attr template attr-key value)
+                field-setter field-data))
+
+  (t/add-class [element class]
+    (node-field (t/add-class template class)
+                field-setter field-data))
+
+  (t/add-style [element attr-name value]
+    (node-field (t/add-style template attr-name value)
+                field-setter field-data))
+
+  DOM
+  (create-nodes [_]
+    (map (create-nodes template)
+         (fn [node]
+           (field-setter node field-data)
+           node))))
+
+;; (defn wrap-event-handler [f]
+;;   (inline C DOMNode "
+;; #ifdef TOCCATA_WASM
+;;   int fnObj = EM_ASM_INT({
+;;       sendValue();
+;;           },
+;;   (int)f_0);
+;; #endif
+;;   return((Value *)fnObj);\n"))
+
+(defn set-event-handler [node key value]
+  (assert (instance? DOMObject node))
+  (assert (instance? FieldName key))
+
+  (inline C Opaque "
+if (value_2->refs != -1 && value_2->refs != -2) {
+  fprintf(stderr, \"DOM event handler '%s' must be defined at the top level in a 'def' expression\\n\",
+          extractStr(type_name((List *)0, value_2)));
+  abort();
+}
+#ifdef TOCCATA_WASM
+  EM_ASM_({
+    objDeref($0)[rcvString($1)] = function(event){
+          _decRef(callToccata($2, sendArray([sendValue(event)])));
+      };},
+  extractDOMObject(node_0), (int)key_1, (int)value_2);
+#endif
+  dec_and_free(key_1, 1);
+  return(node_0);\n"))
+
+(deftype event-handler [template event-name handler]
+  Stringable
+  (string-list [_]
+    (list "(event-handler " (str template " " event-name " " handler) ")"))
+
+  d/DocElement
+  (d/css [_ classes]
+    (d/css template classes))
+
+  (d/html [_]
+    (d/html template))
+
+  t/UpdateTag
+  (t/attr [element attr-key value]
+    (event-handler (t/attr template attr-key value)
+                   event-name handler))
+
+  (t/add-class [element class]
+    (event-handler (t/add-class template class)
+                   event-name handler))
+
+  (t/add-style [element attr-name value]
+    (event-handler (t/add-style template attr-name value)
+                   event-name handler))
+
+  DOM
+  (create-nodes [_]
+    (map (create-nodes template)
+         (fn [node]
+           (set-event-handler node (str "on" event-name) handler)
+           node))))

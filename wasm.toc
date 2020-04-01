@@ -21,6 +21,11 @@ int extractObject(Value *objRef) {
 #ifdef TOCCATA_WASM
 
 EMSCRIPTEN_KEEPALIVE
+int getRefs(int arg) {
+  return((int)((Value *)arg)->refs);
+};
+
+EMSCRIPTEN_KEEPALIVE
 void decRef(int arg) {
   Value *v = (Value *)arg;
   if (v->refs > 0) {
@@ -325,14 +330,14 @@ EM_ASM_({
 }, IntegerType, StringBufferType, SubStringType, MaybeType, VectorType, SymbolType,
    BitmapIndexedType, ArrayNodeType, HashCollisionNodeType);
 #endif
-  return(integerValue(1));
+  return(nothing);
 "))
 
 (def _ (init))
 
 (defn JS-eval [s]
   (assert (instance? String s))
-  (inline C Opaque  "
+  (inline C Maybe  "
 #ifdef TOCCATA_WASM
   EM_ASM_({
     eval(rcvString($0));
@@ -440,6 +445,10 @@ Value *x = integerValue(-1);
 (deftype ReadWriteField [field-name]
   (assert (instance? FieldName field-name))
 
+  Stringable
+  (string-list [_]
+    (list "(ReadWriteField " (str field-name) ")"))
+
   Function
   (invoke [_ obj]
     (get-obj-field obj field-name))
@@ -482,33 +491,33 @@ if (handler_2->refs > 0){
   dec_and_free(key_1, 1);
   return(node_0);\n"))
 
-(defn alert* [s]
-  (assert (instance? String s))
-  (inline C String "
-#ifdef TOCCATA_WASM
-   EM_ASM_({
-     alert(rcvString($0));},
-   (int)s_0);
-#endif
-   dec_and_free(s_0, 1);
-   return(nothing);\n"))
+;; (defn alert* [s]
+;;   (assert (instance? String s))
+;;   (inline C String "
+;; #ifdef TOCCATA_WASM
+;;    EM_ASM_({
+;;      alert(rcvString($0));},
+;;    (int)s_0);
+;; #endif
+;;    dec_and_free(s_0, 1);
+;;    return(nothing);\n"))
 
-(defn alert [& xs]
-  (-> xs
-      (map str)
-      (interpose " ")
-      to-str
-      alert*))
+;; (defn alert [& xs]
+;;   (-> xs
+;;       (map str)
+;;       (interpose " ")
+;;       to-str
+;;       alert*))
 
-(defn new-object []
-  (inline C Opaque "
-#ifdef TOCCATA_WASM
-   int x = EM_ASM_INT({
-     return new sendValue(Object());});
-#else
-   Value *x = (Value *)my_malloc(sizeof(Opaque));
-#endif
-   return((Value *)x);\n"))
+;; (defn new-object []
+;;   (inline C Opaque "
+;; #ifdef TOCCATA_WASM
+;;    int x = EM_ASM_INT({
+;;      return new sendValue(Object());});
+;; #else
+;;    Value *x = (Value *)my_malloc(sizeof(Opaque));
+;; #endif
+;;    return((Value *)x);\n"))
 
 (defn iterable-to-vect [v]
   (inline C Vector "
@@ -522,14 +531,14 @@ if (handler_2->refs > 0){
    dec_and_free(v_0, 1);
    return((Value *)x);\n"))
 
-(defn obj-to-val [v]
-  (inline C "
-#ifdef TOCCATA_WASM
-   int x = EM_ASM_INT({
-             return sendValue(objDeref($0));},
-           extractObject(v_0));
-#else
-   Value *x = nothing;
-#endif
-   dec_and_free(v_0, 1);
-   return((Value *)x);\n"))
+;; (defn obj-to-val [v]
+;;   (inline C "
+;; #ifdef TOCCATA_WASM
+;;    int x = EM_ASM_INT({
+;;              return sendValue(objDeref($0));},
+;;            extractObject(v_0));
+;; #else
+;;    Value *x = nothing;
+;; #endif
+;;    dec_and_free(v_0, 1);
+;;    return((Value *)x);\n"))
